@@ -1433,6 +1433,91 @@ playbooks:
         assert!(seen >= 2, "no se encontró ninguna prueba de conexión");
     }
 
+    /// Todas las tareas de un fichero de Ansible (un playbook o las tareas de
+    /// un rol), con las de dentro de `block`/`rescue`/`always`.
+    fn ansible_tasks(text: &str) -> Vec<serde_yaml::Value> {
+        fn walk(list: &serde_yaml::Value, out: &mut Vec<serde_yaml::Value>) {
+            for t in list.as_sequence().into_iter().flatten() {
+                for k in ["block", "rescue", "always"] {
+                    if let Some(inner) = t.get(k) {
+                        walk(inner, out);
+                    }
+                }
+                out.push(t.clone());
+            }
+        }
+        let doc: serde_yaml::Value = serde_yaml::from_str(text).unwrap();
+        let mut out = Vec::new();
+        let is_play = doc.as_sequence().and_then(|s| s.first()).is_some_and(|p| p.get("hosts").is_some());
+        if is_play {
+            for play in doc.as_sequence().unwrap() {
+                for k in ["pre_tasks", "tasks", "post_tasks"] {
+                    if let Some(l) = play.get(k) {
+                        walk(l, &mut out);
+                    }
+                }
+            }
+        } else {
+            walk(&doc, &mut out);
+        }
+        out
+    }
+
+    fn runs_in_rehearsal(t: &serde_yaml::Value) -> bool {
+        t.get("check_mode").and_then(|v| v.as_bool()) == Some(false)
+    }
+
+    fn skipped_in_rehearsal(t: &serde_yaml::Value) -> bool {
+        let when = match t.get("when") {
+            Some(serde_yaml::Value::String(s)) => vec![s.clone()],
+            Some(serde_yaml::Value::Sequence(l)) => l.iter().filter_map(|v| v.as_str().map(str::to_string)).collect(),
+            _ => vec![],
+        };
+        when.iter().any(|w| w.contains("not ansible_check_mode"))
+    }
+
+    // En un ensayo (`--check`) `command`, `shell` y `uri` no corren. Una tarea
+    // que reintenta hasta ver algo («Traefik en 1/1») reintentaba hasta
+    // rendirse y tumbaba el ensayo de swarm (gstd, 2-nov-2026); y un playbook
+    // de lectura ensayado no comprobaba nada. Roturas que atrapa: una espera
+    // con `until` que corre en el ensayo sin poder ver nada; una lectura de un
+    // playbook `read` que se salta en el ensayo.
+    #[test]
+    fn a_rehearsal_neither_waits_for_nothing_nor_skips_a_read() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let manifest = parse_manifest(&std::fs::read_to_string(root.join(MANIFEST_FILE)).unwrap()).unwrap();
+        let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(root.join("playbooks")).unwrap().map(|e| e.unwrap().path()).collect();
+        for role in std::fs::read_dir(root.join("roles")).unwrap() {
+            let dir = role.unwrap().path().join("tasks");
+            if dir.is_dir() {
+                files.extend(std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().path()));
+            }
+        }
+        let (mut waits, mut reads) = (0, 0);
+        for path in files.iter().filter(|p| p.extension().is_some_and(|e| e == "yml")) {
+            let rel = path.strip_prefix(&root).unwrap().to_string_lossy().to_string();
+            let read_only = manifest.playbooks.iter().any(|p| p.file == rel && p.risk.as_deref() == Some(RISK_READ));
+            for t in ansible_tasks(&std::fs::read_to_string(path).unwrap()) {
+                let name = t.get("name").and_then(|n| n.as_str()).unwrap_or("?").to_string();
+                if t.get("until").is_some() {
+                    waits += 1;
+                    assert!(
+                        runs_in_rehearsal(&t) || skipped_in_rehearsal(&t),
+                        "{rel}: «{name}» reintenta, y en un ensayo su comando no corre: \
+                         `when: not ansible_check_mode` si espera a algo que el ensayo no hace, \
+                         `check_mode: false` si sólo lee"
+                    );
+                }
+                let skipped_module = ["ansible.builtin.command", "ansible.builtin.shell", "ansible.builtin.uri"].iter().any(|m| t.get(*m).is_some());
+                if read_only && skipped_module {
+                    reads += 1;
+                    assert!(runs_in_rehearsal(&t), "{rel}: «{name}» es una lectura y se saltaría en el ensayo: `check_mode: false`");
+                }
+            }
+        }
+        assert!(waits >= 5 && reads >= 8, "el recorrido no encontró las tareas ({waits} esperas, {reads} lecturas)");
+    }
+
     // v2: sin inventario y sin referencias. Roturas que atrapa: aceptar un
     // op:// en el manifiesto; un default en un secreto; become_password_ref en
     // v2; un nombre de secreto en minúsculas.

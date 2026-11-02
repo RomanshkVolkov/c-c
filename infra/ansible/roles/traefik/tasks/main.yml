@@ -86,6 +86,8 @@
   register: traefik_deploy
   changed_when: "'Updating' in traefik_deploy.stdout or 'Creating' in traefik_deploy.stdout"
 
+# En un ensayo no se despliega nada: no hay a quién esperar (y el comando no
+# corre en --check, así que reintentaría hasta rendirse).
 - name: Traefik en 1/1
   ansible.builtin.command: docker service ls --filter name=traefik_traefik --format {% raw %}'{{.Replicas}}'{% endraw %}
   register: replicas
@@ -93,6 +95,7 @@
   retries: 24
   delay: 5
   changed_when: false
+  when: not ansible_check_mode
 
 # Docker se niega a borrar un secret en uso: un fallo es «todavía
 # referenciado» y nunca deja a Traefik sin token.

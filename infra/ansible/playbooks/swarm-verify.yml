@@ -5,17 +5,21 @@
   hosts: swarm
   become: true
   gather_facts: false
+  # Todo aquí sólo lee: corre también en un ensayo (`check_mode: false` en
+  # cada tarea), que si no, se saltaría y el ensayo no comprobaría nada.
   tasks:
     - name: El nodo es manager y está Ready
       ansible.builtin.command: docker node ls --format {% raw %}'{{.Status}} {{.ManagerStatus}}'{% endraw %}
       register: nodes
       changed_when: false
+      check_mode: false
       failed_when: "'Ready Leader' not in nodes.stdout"
 
     - name: Servicios en sus réplicas
       ansible.builtin.command: docker service ls --format {% raw %}'{{.Name}} {{.Replicas}}'{% endraw %}
       register: services
       changed_when: false
+      check_mode: false
       failed_when: >-
         'traefik_traefik 1/1' not in services.stdout or
         'whoami_whoami 1/1' not in services.stdout
@@ -33,6 +37,7 @@
       delay: 10
       delegate_to: localhost
       become: false
+      check_mode: false
       vars:
         ansible_python_interpreter: "{{ ansible_playbook_python }}"
 
@@ -43,6 +48,7 @@
           | openssl x509 -noout -issuer -ext subjectAltName
       register: cert
       changed_when: false
+      check_mode: false
       delegate_to: localhost
       become: false
 

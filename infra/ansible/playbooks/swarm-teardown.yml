@@ -27,6 +27,8 @@
           retries: 24
           delay: 5
           changed_when: false
+          # En un ensayo no se quitó nada: no hay a qué esperar.
+          when: not ansible_check_mode
 
         - name: Salir del Swarm (borra secrets y redes overlay)
           community.docker.docker_swarm:
