@@ -1518,6 +1518,34 @@ playbooks:
         assert!(waits >= 5 && reads >= 8, "el recorrido no encontró las tareas ({waits} esperas, {reads} lecturas)");
     }
 
+    // Un `ssh` que lanza un playbook (las comprobaciones de la etapa 1) no
+    // pasa por la conexión de Ansible: sin `ansible_ssh_extra_args` ofrece
+    // todas las llaves del agente y el sshd endurecido (MaxAuthTries 4) corta
+    // antes de la buena. La etapa 1 se deshizo así estando bien (gstd,
+    // 2-nov-2026). Rotura que atrapa: un `ssh` con llave sin esas llaves.
+    #[test]
+    fn a_playbooks_own_ssh_offers_the_servers_keys() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let mut seen = 0;
+        for entry in std::fs::read_dir(root.join("playbooks")).unwrap() {
+            let path = entry.unwrap().path();
+            for t in ansible_tasks(&std::fs::read_to_string(&path).unwrap()) {
+                let Some(cmd) = t.get("ansible.builtin.command").and_then(|c| c.as_str()) else { continue };
+                if !cmd.trim_start().starts_with("ssh ") || cmd.contains("PubkeyAuthentication=no") {
+                    continue;
+                }
+                seen += 1;
+                assert!(
+                    cmd.contains("ansible_ssh_extra_args"),
+                    "{}: «{}» ofrecería todas las llaves del agente",
+                    path.display(),
+                    t.get("name").and_then(|n| n.as_str()).unwrap_or("?")
+                );
+            }
+        }
+        assert!(seen >= 2, "no se encontraron los ssh de la etapa 1");
+    }
+
     // v2: sin inventario y sin referencias. Roturas que atrapa: aceptar un
     // op:// en el manifiesto; un default en un secreto; become_password_ref en
     // v2; un nombre de secreto en minúsculas.

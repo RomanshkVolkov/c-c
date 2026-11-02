@@ -72,9 +72,16 @@
 
         # Desde la máquina de quien lo corre, como entraría cualquiera.
         # ControlPath=none: una conexión nueva, no la que ya está abierta.
+        # Con las mismas llaves que la conexión de Ansible
+        # (`ansible_ssh_extra_args`: IdentitiesOnly y las públicas que el
+        # servidor autoriza). Sin ellas, un agente con muchas llaves las
+        # ofrece todas y el sshd endurecido (MaxAuthTries 4) corta antes de
+        # llegar a la buena: el cambio se deshacía aunque estuviera bien
+        # (gstd, 2-nov-2026).
         - name: El usuario de operación entra por el puerto nuevo con su llave
           ansible.builtin.command: >-
             ssh -o BatchMode=yes -o ControlPath=none -o ConnectTimeout=10
+            {{ ansible_ssh_extra_args | default('') }}
             -p {{ ssh_port }} -l {{ ops_user }} {{ ansible_host }} true
           delegate_to: localhost
           become: false
@@ -83,6 +90,7 @@
         - name: root ya no entra
           ansible.builtin.command: >-
             ssh -o BatchMode=yes -o ControlPath=none -o ConnectTimeout=10
+            {{ ansible_ssh_extra_args | default('') }}
             -p {{ ssh_port }} -l root {{ ansible_host }} true
           delegate_to: localhost
           become: false
