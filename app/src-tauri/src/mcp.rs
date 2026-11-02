@@ -888,6 +888,10 @@ fn read_hit_text(cfg: &Cfg, hit: &Value) -> Result<String, String> {
             let sec = find_section(&body, &section)?;
             Ok(body[sec.start..sec.end].to_string())
         }
+        "incident" => {
+            let d = api_get(cfg, &format!("/api/v1/incidents/{}", urlencode(&s("id"))))?;
+            Ok(d.get("body").and_then(|b| b.as_str()).unwrap_or("").to_string())
+        }
         other => Err(format!("a {other} hit has no text to expand")),
     }
 }
@@ -2557,15 +2561,90 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "record_incident",
+            "description": "Record something that already BIT someone and will bite the next one: what failed, on which server or in which area, the commit that fixes it and the test that guards it. It is how the next agent finds it without knowing in which task it happened: list_incidents by server or area, search, get_server_config and the map all show it, and a session that names that server gets it in front of it. Hangs from a node (space, folder or list: where it shows, under \"Trampas que ya han mordido\"). One incident per thing that bit, not one per task. Title and body cannot be edited afterwards, so write them as they should read in a year: what happened, why, how it ended. If it was wrong, record a new one with `supersedes`. What changes later goes with update_incident (status; commits and guards are added). Not for decisions (record_decision) or loose facts (remember). Needs `docs:write`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string", "description": "The node's id, or its path as the map shows it." },
+                    "title": { "type": "string", "description": "What bit, in one line, with the names someone would search: «cert-manager < 1.16.4 no limpia el reto DNS-01 en Cloudflare»." },
+                    "body": { "type": "string", "description": "Markdown: what happened, why, how it was fixed or worked around, and what to do if it shows up again." },
+                    "servers": { "type": "array", "items": { "type": "string" }, "description": "Servers of the same organization, by name or id (list_servers). An unknown name fails and lists the ones that exist." },
+                    "areas": { "type": "array", "items": { "type": "string" }, "description": "What it is about, as short words someone touching it would use: k8s, cert-manager, ssh, ansible, webkit… Normalized to lowercase with dashes." },
+                    "commits": { "type": "array", "items": { "type": "string" }, "description": "The commits that fix it: a sha (7 to 40 hex) or owner/repo@sha. A commit cac already saw comes back with its title and link." },
+                    "guards": { "type": "array", "items": { "type": "string" }, "description": "The tests that guard it, as they are found in the repo: `ansible::tests::cert_manager_can_clean_its_cloudflare_challenge`." },
+                    "status": { "type": "string", "enum": ["open", "fixed"], "description": "open (default) while it can still bite; fixed once the fix is in." },
+                    "originTaskId": { "type": "string", "description": "The task it happened in (ref like command-and-control-283, or id), of the same organization." },
+                    "supersedes": { "type": "string", "description": "The id of an incident this one replaces (it was wrong or incomplete). The old one leaves the map, the list and search." },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["kind", "ownerId", "title"]
+            }
+        },
+        {
+            "name": "list_incidents",
+            "description": "What already bit, filtered: by server (name or id), by area (k8s, cert-manager…), by status, by space, or since an instant. Open ones first, then the newest. No bodies: read one with get_incident. Call it BEFORE touching a server or an area — it is the cheapest way not to step on the same thing twice. Without orgId it looks in every organization the token is a member of.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "server": { "type": "string" },
+                    "area": { "type": "string" },
+                    "status": { "type": "string", "enum": ["open", "fixed"] },
+                    "spaceId": { "type": "string" },
+                    "orgId": { "type": "string" },
+                    "since": { "type": "string", "description": "RFC 3339 instant: only those recorded or changed since." },
+                    "limit": { "type": "integer", "description": "1–200, default 50." }
+                }
+            }
+        },
+        {
+            "name": "get_incident",
+            "description": "One incident with everything: body, servers, areas, commits (with title and link when cac saw them), guards, the task it came from (with its ref), who wrote it and whether another one superseded it. Ids come from list_incidents, search (kind incident), get_context (each node's `incidents`) and get_server_config.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "id": { "type": "string" } },
+                "required": ["id"]
+            }
+        },
+        {
+            "name": "update_incident",
+            "description": "Change what happened after an incident was written: `status` (fixed when the fix is in; open again if it came back — needs `docs:manage`), and ADD commits, guards, servers or areas that came later (needs `docs:write`). Title and body never change: for that, record_incident with `supersedes`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string" },
+                    "status": { "type": "string", "enum": ["open", "fixed"] },
+                    "commits": { "type": "array", "items": { "type": "string" } },
+                    "guards": { "type": "array", "items": { "type": "string" } },
+                    "servers": { "type": "array", "items": { "type": "string" } },
+                    "areas": { "type": "array", "items": { "type": "string" } },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["id"]
+            }
+        },
+        {
+            "name": "search_misses",
+            "description": "What agents searched in cac and found nothing, grouped by query with how many times and the last one. It is the data to decide whether search needs meaning (synonyms, the other language) or what is missing is to write it down. Only an admin of the organization, or a superadmin (who also sees the old ones saved without an organization).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "orgId": { "type": "string" },
+                    "days": { "type": "integer", "description": "1–90, default 30." }
+                }
+            }
+        },
+        {
             "name": "remember",
-            "description": "Write down one fact for whoever works on this space next: a measured number, a trick that worked, a dead end, a command. It goes as one dated line into the space's \"Notas de agentes\" page (created the first time), which search covers like any page. With `as: \"trap\"` it goes instead to the section \"Trampas que ya han mordido\" of the node's overview (both created if missing): for something that already broke and will break the next one — what happened, why, and the test that guards it if there is one. Not for decisions (record_decision), not for how things are done (the runbook), not for what belongs in a task's thread (add_task_comment). Needs `docs:write`.",
+            "description": "Write down one fact for whoever works on this space next: a measured number, a trick that worked, a dead end, a command. It goes as one dated line into the space's \"Notas de agentes\" page (created the first time), which search covers like any page. Something that already BIT and will bite the next one is not a note: record it with record_incident (server, area, commit, guard), so whoever touches that server finds it. Not for decisions (record_decision), not for how things are done (the runbook), not for what belongs in a task's thread (add_task_comment). Needs `docs:write`.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "kind": { "type": "string", "enum": ["space", "folder", "list"], "description": "Optional; space when omitted." },
                     "ownerId": { "type": "string", "description": "The node's id, or its path as the map shows it." },
                     "text": { "type": "string", "description": "One line, markdown, as it should read in a year: what, where, and the number or the command. Do not write the date: it is added." },
-                    "as": { "type": "string", "enum": ["note", "trap"], "description": "Optional; note when omitted. trap: into \"Trampas que ya han mordido\" of the overview, instead of the agents' notes page." },
+                    "as": { "type": "string", "enum": ["note", "trap"], "description": "Optional; note when omitted. (trap is kept for older sessions; what bit goes with record_incident.)" },
                     "dryRun": { "type": "boolean" }
                 },
                 "required": ["ownerId", "text"]
@@ -3224,7 +3303,7 @@ fn task_id_fields(tool: &str) -> &'static [&'static str] {
         "update_task" | "add_task_comment" | "edit_task_comment" | "delete_task_comment"
         | "add_task_attachment" | "link_pull_request" => &["id"],
         "create_task" => &["parentId"],
-        "record_decision" => &["originTaskId"],
+        "record_decision" | "record_incident" => &["originTaskId"],
         _ => &[],
     }
 }
@@ -3648,7 +3727,12 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                         .collect()
                 })
                 .unwrap_or_default();
-            Ok(json!({ "version": version, "effective": effective, "versions": versions }))
+            let mut out = json!({ "version": version, "effective": effective, "versions": versions });
+            let inc = server_incidents(cfg, &server);
+            if !inc.is_null() {
+                out["incidents"] = inc;
+            }
+            Ok(out)
         }
 
         "set_server_config" => {
@@ -3745,7 +3829,14 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 Some("awaiting_approval") => "Waiting for a person to approve it in the app (Servers → Provisioning → Requests). Tell them; check it with get_provisioning_request.".into(),
                 _ => "The request did not pass: read its flags.".into(),
             };
-            Ok(json!({ "request": req, "next": next }))
+            let mut out = json!({ "request": req, "next": next });
+            if let Some(sid) = req.get("serverId").and_then(|v| v.as_str()) {
+                let inc = server_incidents(cfg, sid);
+                if !inc.is_null() {
+                    out["incidents"] = inc;
+                }
+            }
+            Ok(out)
         }
 
         "get_provisioning_request" => {
@@ -3912,6 +4003,83 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             };
             let data = api_get(cfg, &format!("{path}?limit={limit}"))?;
             Ok(json!({ "where": where_, "messages": message_lines(&data) }))
+        }
+
+        "record_incident" => {
+            let (kind, id) = doc_target(cfg, args)?;
+            let title = arg_str(args, "title").ok_or("title is required")?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "docs:write", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")));
+            }
+            let mut body = json!({ "title": title });
+            for key in ["body", "status", "originTaskId", "supersedes"] {
+                if let Some(v) = arg_str(args, key) {
+                    body[key] = json!(v);
+                }
+            }
+            for key in ["servers", "areas", "commits", "guards"] {
+                let l = str_list(args.get(key));
+                if !l.is_empty() {
+                    body[key] = json!(l);
+                }
+            }
+            let out = api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/incidents"), body)?;
+            Ok(json!({ "recorded": incident_view(&out) }))
+        }
+
+        "list_incidents" => {
+            let mut q: Vec<String> = Vec::new();
+            for key in ["server", "area", "status", "spaceId", "orgId", "since"] {
+                if let Some(v) = arg_str(args, key) {
+                    q.push(format!("{key}={}", urlencode(&v)));
+                }
+            }
+            q.push(format!("limit={}", arg_i64(args, "limit").unwrap_or(50).clamp(1, 200)));
+            api_get(cfg, &format!("/api/v1/incidents/?{}", q.join("&")))
+        }
+
+        "get_incident" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            let d = api_get(cfg, &format!("/api/v1/incidents/{}", urlencode(&id)))?;
+            Ok(incident_view(&d))
+        }
+
+        "update_incident" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            let path = format!("/api/v1/incidents/{}", urlencode(&id));
+            let mut add = json!({});
+            for key in ["servers", "areas", "commits", "guards"] {
+                let l = str_list(args.get(key));
+                if !l.is_empty() {
+                    add[key] = json!(l);
+                }
+            }
+            let status = arg_str(args, "status");
+            let has_add = add.as_object().is_some_and(|o| !o.is_empty());
+            if status.is_none() && !has_add {
+                return Err("pass status, or commits / guards / servers / areas to add".into());
+            }
+            if arg_bool(args, "dryRun") {
+                let scope = if status.is_some() { "docs:manage" } else { "docs:write" };
+                return dry_run(cfg, scope, api_get(cfg, &path));
+            }
+            let mut last = Value::Null;
+            if has_add {
+                last = api_post(cfg, &format!("{path}/additions"), add)?;
+            }
+            if let Some(st) = status {
+                last = api_patch(cfg, &path, json!({ "status": st }))?;
+            }
+            Ok(json!({ "updated": incident_view(&last) }))
+        }
+
+        "search_misses" => {
+            let mut q = vec![format!("days={}", arg_i64(args, "days").unwrap_or(30).clamp(1, 90))];
+            if let Some(o) = arg_str(args, "orgId") {
+                q.push(format!("orgId={}", urlencode(&o)));
+            }
+            let data = api_get(cfg, &format!("/api/v1/search/misses?{}", q.join("&")))?;
+            Ok(json!({ "misses": data }))
         }
 
         "get_decision" => {
@@ -5813,6 +5981,46 @@ fn civil_date(secs: i64) -> String {
 
 /// Una decisión, como la lee un agente: el cuerpo, quién, cuándo, de dónde
 /// salió y a quién sustituye o quién la sustituyó.
+/// Un incidente como lo lee un agente: lo que dice, dónde, y cómo comprobar
+/// el arreglo (los commits y los guardianes).
+fn incident_view(d: &Value) -> Value {
+    let mut out = json!({
+        "id": d.get("id"), "title": d.get("title"), "status": d.get("status"), "body": d.get("body"),
+        "servers": d.get("servers").and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|s| s.get("name").cloned()).collect::<Vec<_>>()),
+        "areas": d.get("areas"), "commits": d.get("commits"), "guards": d.get("guards"),
+        "ownerKind": d.get("ownerKind"), "ownerId": d.get("ownerId"), "where": d.get("ownerName"),
+        "recordedAt": d.get("createdAt"), "fixedAt": d.get("fixedAt"), "by": d.get("authorName"), "via": d.get("via"),
+    });
+    for key in ["originRef", "originTitle", "originTaskId", "supersedesId", "supersededById"] {
+        if let Some(v) = d.get(key).and_then(|v| v.as_str()).filter(|v| !v.is_empty()) {
+            out[key] = json!(v);
+        }
+    }
+    if out.get("supersededById").is_some() {
+        out["note"] = json!("Superseded: read the one in supersededById.");
+    }
+    out
+}
+
+/// Lo que ha mordido en un servidor, para ponérselo delante a quien va a
+/// tocarlo (get_server_config, request_provisioning). Un extra: si falla, la
+/// respuesta sale sin ello.
+fn server_incidents(cfg: &Cfg, server_id: &str) -> Value {
+    match api_get(cfg, &format!("/api/v1/servers/{}/incidents", urlencode(server_id))) {
+        Ok(d) => {
+            let list: Vec<Value> = d.get("incidents").and_then(|v| v.as_array()).map(|a| {
+                a.iter().map(|i| json!({
+                    "id": i.get("id"), "title": i.get("title"), "status": i.get("status"), "areas": i.get("areas"),
+                })).collect()
+            }).unwrap_or_default();
+            let open = list.iter().filter(|i| i["status"] == "open").count();
+            json!({ "open": open, "list": list, "note": "What already bit on this server. Read one with get_incident before touching what it names." })
+        }
+        Err(_) => Value::Null,
+    }
+}
+
 fn decision_view(data: &Value) -> Value {
     let d = data.get("decision").cloned().unwrap_or(Value::Null);
     let mut out = json!({
@@ -6078,7 +6286,8 @@ fn instructions(state: Option<SkillState>) -> String {
          get_context first (no arguments: it finds the project from the folder's git remote); it returns the index of \
          what the team knows (the tree, the headings of each document, decisions, repo docs, tasks in progress) \
          without bodies. Then read the section \"Trampas que ya han mordido\" of the node you will touch and \"Antes \
-         de dar algo por hecho\" of the runbook, when they exist, and anything else only as you need it; a decision's \
+         de dar algo por hecho\" of the runbook, when they exist, and before touching a server or an area, what \
+         already bit there (list_incidents by server or area); anything else only as you need it; a decision's \
          body is read with get_decision. If the repo is not linked to a space, the repository's CLAUDE.md may name \
          its list under \"Tareas en cac\"; otherwise ask the user.\n\
          2. THE BOARD. Before working, bring the board up to date, only in the lists you will touch: each task in \
@@ -6090,8 +6299,10 @@ fn instructions(state: Option<SkillState>) -> String {
          instead of taking it). What it waits for goes in blockedBy, not in a comment. End every commit message with its ref, e.g. (proteus-12), so cac links the commit to it; in \
          a repository cac is not connected to, such as a client's own GitHub organization, leave the commit clean \
          and note the repo and sha in the task instead. Record findings as task comments and decisions with \
-         record_decision (a decision that changes supersedes the old one; it is not rewritten); a fact useful to \
-         whoever comes next, whatever their task, goes with remember. To talk to people (a channel, a teammate, \
+         record_decision (a decision that changes supersedes the old one; it is not rewritten); what bit you and \
+         will bite the next one goes with record_incident (its server or area, the commit that fixes it, the test \
+         that guards it), not as a comment in a long task; a fact useful to whoever comes next, whatever their \
+         task, goes with remember. To talk to people (a channel, a teammate, \
          another agent) use send_message, which goes out in the user's name marked as an agent's: send what they \
          asked to send, and show them words you wrote yourself before sending.\n\
          4. CLOSE HONESTLY. Before you tell the user you are done, write the task's handoff (update_task handoff: \
@@ -6929,6 +7140,35 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert!(merge_secret_refs(&current, &[json!({ "name": "A", "opRef": "op://x", "usage": "siempre" })], &[], false).is_err());
         assert!(merge_secret_refs(&current, &[json!({ "name": "A" })], &[], false).is_err());
+    }
+
+    /// El registro de lo que mordió (command-and-control-289): las herramientas
+    /// están, lo escrito no se edita, y la vista deja lo que hace falta para
+    /// comprobar el arreglo. Roturas que atrapa: quitar una herramienta;
+    /// ofrecer `title` o `body` en update_incident; que la vista pierda los
+    /// nombres de los servidores, los commits o el aviso de sustituido.
+    #[test]
+    fn what_bit_is_recorded_and_never_rewritten() {
+        let defs = tool_defs();
+        for name in ["record_incident", "list_incidents", "get_incident", "update_incident", "search_misses"] {
+            assert!(!tool(&defs, name).is_null(), "falta {name}");
+        }
+        let upd = &tool(&defs, "update_incident")["inputSchema"]["properties"];
+        assert!(upd.get("title").is_none() && upd.get("body").is_none(), "update_incident reescribe");
+        let rec = &tool(&defs, "record_incident")["inputSchema"]["properties"];
+        for key in ["servers", "areas", "commits", "guards", "supersedes", "originTaskId"] {
+            assert!(rec.get(key).is_some(), "record_incident no anuncia {key}");
+        }
+        assert!(tool(&defs, "remember")["description"].as_str().unwrap().contains("record_incident"));
+        let v = incident_view(&json!({
+            "id": "i1", "title": "t", "status": "fixed",
+            "servers": [{ "id": "s1", "name": "gstd" }],
+            "commits": [{ "sha": "abc1234" }], "guards": ["g"], "supersededById": "i2", "originRef": "cc-283",
+        }));
+        assert_eq!(v["servers"][0], "gstd");
+        assert_eq!(v["commits"][0]["sha"], "abc1234");
+        assert_eq!(v["originRef"], "cc-283");
+        assert!(v["note"].as_str().unwrap().contains("i2") || v["note"].as_str().unwrap().contains("supersededById"));
     }
 
     /// Las herramientas existen, piden el permiso propio y `update_deploy_config`
@@ -7867,6 +8107,8 @@ mod tests {
             ("decisions with record_decision", "`record_decision`"),
             ("done means published", "**`done` quiere decir publicado**"),
             ("where it ships", "**en qué sale**"),
+            ("list_incidents by server or area", "`list_incidents`"),
+            ("goes with record_incident", "`record_incident`"),
         ] {
             assert!(instr.contains(en), "las instrucciones ya no dicen «{en}»");
             assert!(WORK_SKILL.contains(es), "la skill ya no dice «{es}»");

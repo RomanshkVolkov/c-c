@@ -1,6 +1,6 @@
 ---
 name: cac-consolidar
-description: Pasa por lo que entró en cac en la última semana (tareas cerradas, notas de agentes, decisiones, docs editados) y propone qué sube a «Trampas que ya han mordido», qué decisión falta registrar, qué sección del runbook quedó vieja y qué páginas se duplican. No escribe nada hasta que el usuario aprueba. Úsala cuando digan «consolida», «limpia cac», «qué se nos quedó sin apuntar», o una vez por semana por espacio.
+description: Pasa por lo que entró en cac en la última semana (tareas cerradas, notas de agentes, decisiones, docs editados) y propone qué pasa al registro de incidentes (lo que mordió), qué decisión falta registrar, qué sección del runbook quedó vieja y qué páginas se duplican. No escribe nada hasta que el usuario aprueba. Úsala cuando digan «consolida», «limpia cac», «qué se nos quedó sin apuntar», o una vez por semana por espacio.
 ---
 
 # Consolidar cac
@@ -25,7 +25,8 @@ consolidación, si el usuario la nombra):
   «notas de agentes»): lo que los agentes apuntaron con `remember`.
 - `changes.decisions` y `changes.docs`: lo que ya se registró y se editó, para
   no proponerlo dos veces.
-- La sección **«Trampas que ya han mordido»** y el runbook del nodo, para
+- Los incidentes del espacio (`list_incidents` con `spaceId`, los abiertos
+  primero) y el runbook del nodo, para
   comparar.
 
 No leas más que eso. Una consolidación que se lee el espacio entero no se
@@ -36,11 +37,14 @@ vuelve a hacer.
 Una lista corta, agrupada así, cada punto con **de dónde sale** (la tarea, la
 nota, la fecha) y **el texto propuesto** tal cual iría:
 
-1. **Sube a «Trampas que ya han mordido».** Algo que mordió a alguien y le
-   morderá al siguiente: un fallo de plataforma, un comportamiento no
-   documentado, una suposición que resultó falsa. Tres o cuatro líneas: qué
-   pasó, por qué, y qué prueba lo guarda si la hay. Una nota de agente que
-   lo cuenta es candidata; un dato medido sin moraleja, no.
+1. **Es un incidente.** Algo que mordió a alguien y le morderá al
+   siguiente —un fallo de plataforma, un comportamiento no documentado, una
+   suposición que resultó falsa— y que está como comentario o como nota en
+   vez de en el registro. Proponer el `record_incident` entero: título,
+   cuerpo, servidores, áreas, commits, guardián, tarea y estado. Una nota de
+   agente que lo cuenta es candidata; un dato medido sin moraleja, no. Y al
+   revés: un incidente **abierto** cuyo arreglo ya salió (el commit está en
+   una release o desplegado) se propone cerrar con `update_incident`.
 2. **Falta una decisión.** Un comentario o handoff que dice «decidimos»,
    «jose prefiere», «se descarta», y no hay entrada en el registro. Proponer
    título, porqué y `decidedBy`. Si cambia una decisión vigente, decir cuál
@@ -61,9 +65,8 @@ nada que subir») es una respuesta válida y corta.
 
 Sólo lo aprobado, punto por punto, con las herramientas de siempre:
 
-- Trampas: `write_doc_section` sobre «Trampas que ya han mordido» del nodo,
-  con el `sectionHash` leído; si el nodo no la tiene, `append_doc_tab` en el
-  overview.
+- Incidentes: `record_incident` en el nodo, y `update_incident` para
+  cerrar o añadir el commit que faltaba.
 - Decisiones: `record_decision` con `originTaskId` y `decidedBy`.
 - Runbook: `write_doc_section` con su `sectionHash`.
 - Notas cumplidas: reescribir la página «Notas de agentes» sin esas líneas

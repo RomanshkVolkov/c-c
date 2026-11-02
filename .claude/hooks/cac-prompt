@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""UserPromptSubmit: si el prompt nombra un servidor o un área de los que ya
+han mordido (pixel-vps, gstd, cert-manager, k8s…), le pone delante al agente
+los títulos de esos incidentes, una vez por sesión cada uno.
+
+Es lo que hace que cac sea memoria en el punto de acción y no sólo cuando
+alguien se acuerda de buscar: los dieciséis tropiezos del simulacro de gstd
+(command-and-control-283) quedaron en el hilo de una tarea, y quien fuera a
+tocar pixel-vps no los iba a encontrar sin saber que estaban ahí
+(command-and-control-289, decidido con jose el 2-nov-2026).
+
+Determinista y barato a propósito: sin modelo y sin buscar por significado.
+El vocabulario son los nombres de servidores y áreas que **tienen** incidentes
+—no hay falsos positivos con palabras sueltas—, se pide a cac una vez cada
+`VOCAB_TTL` segundos y se compara en local. Lo que imprime entra en el
+contexto; si no casa nada, no imprime nada. Ante cualquier fallo, calla.
+"""
+import json
+import os
+import re
+import sys
+import time
+import unicodedata
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from cac_hooks import api, cac_config, read_input  # noqa: E402
+
+VOCAB_TTL = 15 * 60
+MAX_LINES = 8
+# Un nombre de dos letras («ui», «db») casaría con medio idioma.
+MIN_TERM = 3
+
+
+def cache_dir():
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    d = os.path.join(base, "cac-hooks")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def fold(s):
+    """Minúsculas y sin acentos: «Kubernetes» y «kubernetes», «ñ» y «n»."""
+    s = unicodedata.normalize("NFKD", s.lower())
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
+def incidents(cfg):
+    """Los incidentes vigentes de las orgs del token, cacheados. Sin cuerpo."""
+    path = os.path.join(cache_dir(), "incidents.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            cached = json.load(f)
+        if time.time() - cached.get("at", 0) < VOCAB_TTL:
+            return cached.get("incidents") or []
+    except (OSError, ValueError):
+        pass
+    data = api(cfg, "/api/v1/incidents/?limit=200")
+    if data is None:
+        return []
+    found = data.get("incidents") or []
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"at": time.time(), "incidents": found}, f)
+    except OSError:
+        pass
+    return found
+
+
+def terms_of(inc):
+    names = [s.get("name", "") for s in inc.get("servers") or []] + list(inc.get("areas") or [])
+    return {fold(n) for n in names if len(n) >= MIN_TERM}
+
+
+def named(prompt, term):
+    """Si el prompt nombra el término como palabra entera: «gstd» sí casa en
+    «en gstd falla», no en «gstdx»; «cert-manager» casa tal cual."""
+    return re.search(r"(?<![a-z0-9])" + re.escape(term) + r"(?![a-z0-9])", prompt) is not None
+
+
+def seen_path(session):
+    safe = re.sub(r"[^A-Za-z0-9_-]", "", session or "")[:80] or "sin-sesion"
+    return os.path.join(cache_dir(), f"seen-{safe}.json")
+
+
+def load_seen(session):
+    try:
+        with open(seen_path(session), encoding="utf-8") as f:
+            return set(json.load(f))
+    except (OSError, ValueError):
+        return set()
+
+
+def save_seen(session, ids):
+    try:
+        with open(seen_path(session), "w", encoding="utf-8") as f:
+            json.dump(sorted(ids), f)
+    except OSError:
+        pass
+    # Lo de sesiones de hace más de un día ya no sirve a nadie.
+    d = cache_dir()
+    for name in os.listdir(d):
+        p = os.path.join(d, name)
+        if name.startswith("seen-") and time.time() - os.path.getmtime(p) > 86400:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+
+def lines_for(prompt, found, seen):
+    prompt = fold(prompt)
+    hits, words = [], []
+    for inc in found:
+        if inc.get("id") in seen:
+            continue
+        matched = sorted(t for t in terms_of(inc) if named(prompt, t))
+        if not matched:
+            continue
+        hits.append(inc)
+        words.extend(w for w in matched if w not in words)
+    if not hits:
+        return [], []
+    out = [f"cac · lo que ya mordió en lo que nombras ({', '.join(words)}):"]
+    for inc in hits[:MAX_LINES]:
+        state = "abierto" if inc.get("status") == "open" else "arreglado"
+        where = ", ".join([s.get("name", "") for s in inc.get("servers") or []] + list(inc.get("areas") or []))
+        out.append(f"- [{state}] {inc.get('title', '')} ({where}) · get_incident {inc.get('id')}")
+    if len(hits) > MAX_LINES:
+        out.append(f"… y {len(hits) - MAX_LINES} más: list_incidents con server o area.")
+    return out, [i.get("id") for i in hits[:MAX_LINES]]
+
+
+def main():
+    inp = read_input()
+    prompt = inp.get("prompt") or ""
+    if not prompt.strip():
+        return
+    cfg = cac_config()
+    if not cfg:
+        return
+    found = incidents(cfg)
+    if not found:
+        return
+    session = inp.get("session_id") or ""
+    seen = load_seen(session)
+    out, shown = lines_for(prompt, found, seen)
+    if not out:
+        return
+    save_seen(session, seen | set(shown))
+    print("\n".join(out))
+
+
+if __name__ == "__main__":
+    main()

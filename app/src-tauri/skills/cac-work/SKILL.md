@@ -68,7 +68,13 @@ Con eso, **lee sólo lo que toca**, y primero esto, si existe:
 
 - «**Trampas que ya han mordido**», en el overview del nodo que vas a tocar
   (la carpeta o la lista; si no la tiene, el espacio). Es lo que ya rompió a
-  alguien, y lo que más cuesta descubrir solo;
+  alguien, y lo que más cuesta descubrir solo. El mapa ya trae sus títulos:
+  los `incidents` de cada nodo, los abiertos primero;
+- **antes de tocar un servidor o un área** (pixel-vps, k8s, cert-manager,
+  ssh…), lo que ya mordió ahí: `list_incidents` con `server` o `area`, y el
+  cuerpo del que toque con `get_incident`. Da igual en qué tarea pasó: se
+  encuentra por el servidor y el área. `get_server_config` y
+  `request_provisioning` ya lo traen del servidor que nombras;
 - «**Antes de dar algo por hecho**», en el runbook: cómo se verifica aquí.
 
 Lo demás, por su título en el mapa:
@@ -195,8 +201,8 @@ Por el camino:
   truco, un número medido, un comando, algo que no funciona) va con
   `remember`: una línea con fecha en la página «Notas de agentes» del
   espacio, que la búsqueda encuentra (la fecha la pone cac: no la escribas). No es una decisión ni cambia el
-  runbook. Si es una trampa, `remember` con `as: "trap"`: va directo a
-  «Trampas que ya han mordido» (ver el paso 6).
+  runbook. Si es algo que **mordió**, no es una nota: es un incidente (ver el
+  paso 6).
 - **Una lista de pendientes son subtareas** (`subtasks` al crear, o
   `create_task` con `parentId` después), no texto en un comentario: así se ve
   qué está hecho. Cada una se marca con `update_task` y `status: "done"`.
@@ -310,12 +316,19 @@ En una rama, lo mismo con guiones: `proteus-12-login`.
   `renameTo`: así conserva su id y las decisiones enlazadas. Un título
   repetido se nombra por su `sectionId`. Para algo nuevo, usa
   `append_doc_tab`. Si el token no tiene permiso, dile al usuario qué cambiar.
-- **Una trampa que te mordió** a ti y le morderá al siguiente va a «Trampas
-  que ya han mordido» del overview del nodo, en tres o cuatro líneas: qué
-  pasó, por qué, y qué prueba lo guarda si la hay. Con `remember` y
-  `as: "trap"` cae en esa sección aunque el nodo no tenga overview todavía (se
-  crean los dos); `append_doc_tab` con `section` hace lo mismo con cualquier
-  sección.
+- **Lo que te mordió** a ti y le morderá al siguiente va con
+  `record_incident`, en el momento, **no como un comentario más** de una
+  tarea larga: así lo encuentra quien toque ese servidor o esa área sin
+  saber en qué tarea pasó. Uno por cosa que mordió, con:
+  - `title`: qué mordió, en una línea, con los nombres que alguien buscaría;
+  - `body`: qué pasó, por qué, y cómo quedó;
+  - `servers` (por nombre) y `areas` (`k8s`, `cert-manager`, `ssh`…);
+  - `commits` que lo arreglan y `guards`, la prueba que lo guarda;
+  - `originTaskId` (la tarea) y `status` (`open` mientras pueda morder).
+
+  Título y cuerpo no se editan: si estaba mal, otro con `supersedes`. Lo que
+  llega después (el commit, la prueba, «ya está arreglado») va con
+  `update_incident`. Se enseña en «Trampas que ya han mordido» del nodo.
 - **Una decisión que vive en el nodo equivocado** se lleva al bueno
   apuntándola allí con `supersedes` y el id de la vieja: puede ser de otro
   nodo de la organización.
@@ -393,4 +406,4 @@ de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
 detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
 decisiones del espacio Command and control por qué está._
 
-<!-- cac-work v20 -->
+<!-- cac-work v21 -->

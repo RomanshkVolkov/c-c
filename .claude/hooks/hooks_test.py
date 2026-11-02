@@ -10,7 +10,10 @@ Roturas que detectan: no buscar la raíz del repo desde una subcarpeta; imprimir
 el token; no callar cuando el repo no está atado o cac no contesta; dejar parar
 con un commit que nombra una tarea sin handoff posterior; bloquear otra vez con
 `stop_hook_active`; tomar `PROTEUS-12` (Jira) por una referencia; pedir
-handoff a una tarea ya hecha.
+handoff a una tarea ya hecha; no enseñar al arrancar lo abierto que puede
+morder; que el prompt no traiga lo que mordió en lo que nombra, lo traiga por
+una palabra de dos letras o a medias, lo repita en la misma sesión, o no
+refresque el vocabulario viejo.
 """
 import json
 import os
@@ -79,7 +82,8 @@ class Hooks(unittest.TestCase):
         cls.repo = os.path.join(cls.tmp.name, "repo")
         git_repo(cls.repo, "feat: algo (cc-7)")
         os.makedirs(os.path.join(cls.repo, "app"))
-        cls.env = dict(os.environ, CLAUDE_CONFIG_DIR=cls.cfgdir, HOME=cls.tmp.name)
+        cls.env = dict(os.environ, CLAUDE_CONFIG_DIR=cls.cfgdir, HOME=cls.tmp.name,
+                       XDG_CACHE_HOME=os.path.join(cls.tmp.name, ".cache"))
 
     @classmethod
     def tearDownClass(cls):
@@ -111,6 +115,71 @@ class Hooks(unittest.TestCase):
         self.assertEqual((r.returncode, r.stdout), (0, ""))
         r = run_hook("cac-session", {"cwd": self.tmp.name}, self.env)
         self.assertEqual((r.returncode, r.stdout), (0, ""))
+
+    def test_session_shows_what_is_still_open_in_the_space(self):
+        ANSWERS["/api/v1/context?repo=guz-studio%2Fcac"] = (200, {"space": {"id": "sp-1", "name": "cac"}, "inProgress": []})
+        ANSWERS["/api/v1/incidents/?spaceId=sp-1&status=open"] = (200, {"incidents": [
+            {"id": "inc-1", "title": "pixel-vps corre cert-manager 1.14", "servers": [{"name": "pixel-vps"}], "areas": ["cert-manager"]},
+        ]})
+        r = run_hook("cac-session", {"cwd": self.repo}, self.env)
+        self.assertIn("Trampas abiertas (1):", r.stdout)
+        self.assertIn("- pixel-vps, cert-manager · pixel-vps corre cert-manager 1.14 (inc-1)", r.stdout)
+
+    # ── cac-prompt ──
+
+    def prompt(self, text, session="s-1"):
+        r = run_hook("cac-prompt", {"prompt": text, "session_id": session, "cwd": self.repo}, self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def fresh_vocabulary(self, incidents):
+        cache = os.path.join(self.tmp.name, ".cache", "cac-hooks")
+        if os.path.isdir(cache):
+            for f in os.listdir(cache):
+                os.remove(os.path.join(cache, f))
+        ANSWERS["/api/v1/incidents/"] = (200, {"incidents": incidents})
+
+    INCIDENTS = [
+        {"id": "inc-1", "title": "cert-manager 1.14 no limpia el reto", "status": "open",
+         "servers": [{"name": "pixel-vps"}], "areas": ["cert-manager"]},
+        {"id": "inc-2", "title": "ufw corta la red del clúster", "status": "fixed",
+         "servers": [{"name": "gstd"}], "areas": ["k8s", "ui"]},
+    ]
+
+    def test_a_prompt_that_names_a_server_brings_what_bit_there(self):
+        self.fresh_vocabulary(self.INCIDENTS)
+        out = self.prompt("Vamos a actualizar Pixel-VPS mañana")
+        self.assertIn("pixel-vps", out)
+        self.assertIn("[abierto] cert-manager 1.14 no limpia el reto", out)
+        self.assertIn("get_incident inc-1", out)
+        self.assertNotIn("inc-2", out, "trae lo de otro servidor")
+        self.assertNotIn("t-prueba", out)
+
+    def test_a_prompt_without_known_names_says_nothing(self):
+        self.fresh_vocabulary(self.INCIDENTS)
+        # «ui» es un área de inc-2, pero dos letras casarían con medio idioma;
+        # y «gstdx» no es «gstd».
+        self.assertEqual(self.prompt("arregla la ui del gstdx", session="s-2"), "")
+
+    def test_an_incident_is_shown_once_per_session(self):
+        self.fresh_vocabulary(self.INCIDENTS)
+        self.assertIn("inc-2", self.prompt("en gstd falla k8s", session="s-3"))
+        self.assertEqual(self.prompt("y otra vez gstd", session="s-3"), "", "se repite en la misma sesión")
+        self.assertIn("inc-2", self.prompt("gstd", session="s-4"), "otra sesión no lo ve")
+
+    def test_the_vocabulary_is_asked_again_when_it_is_old(self):
+        self.fresh_vocabulary([])
+        self.assertEqual(self.prompt("gstd", session="s-5"), "")
+        # Lo cacheado está vacío y fresco: aunque cac ya tenga uno, no se pide.
+        ANSWERS["/api/v1/incidents/"] = (200, {"incidents": self.INCIDENTS})
+        self.assertEqual(self.prompt("gstd", session="s-5"), "")
+        path = os.path.join(self.tmp.name, ".cache", "cac-hooks", "incidents.json")
+        with open(path) as f:
+            cached = json.load(f)
+        cached["at"] -= 3600
+        with open(path, "w") as f:
+            json.dump(cached, f)
+        self.assertIn("inc-2", self.prompt("gstd", session="s-5"), "no se refresca lo viejo")
 
     # ── cac-handoff ──
 
