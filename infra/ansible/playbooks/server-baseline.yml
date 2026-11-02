@@ -15,9 +15,14 @@
   gather_facts: false
   become: true
   pre_tasks:
+    # En un ensayo (--check) Ansible se salta wait_for_connection, y sin la
+    # prueba no se caía a root por el 22: el ensayo de la primera vez iba al
+    # puerto nuevo, que aún no existe. Probar no cambia nada: corre también
+    # en el ensayo.
     - name: ¿Se entra como dice el inventario?
       ansible.builtin.wait_for_connection:
         timeout: 15
+      check_mode: false
       ignore_errors: true
       register: probe
 

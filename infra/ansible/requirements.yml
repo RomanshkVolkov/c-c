@@ -6,7 +6,7 @@ collections:
     version: "3.13.0"
   - name: community.general     # cloudflare_dns, ufw
     version: "10.7.0"
-  - name: ansible.posix         # sysctl, el callback profile_tasks
+  - name: ansible.posix         # sysctl
     version: "1.6.2"
   - name: kubernetes.core       # helm (sólo necesita el binario en el servidor)
     version: "5.0.0"

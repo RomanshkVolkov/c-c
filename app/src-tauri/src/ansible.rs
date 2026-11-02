@@ -1400,6 +1400,39 @@ playbooks:
         }
     }
 
+    // En un ensayo (`--check`) Ansible se salta `wait_for_connection`: sin
+    // `check_mode: false`, la prueba de «¿se entra como dice el inventario?»
+    // no corría, no se caía a root por el 22, y el ensayo de la etapa 1 iba
+    // al puerto nuevo, que aún no existe (gstd, 2-nov-2026). Rotura que
+    // atrapa: una prueba de conexión que vuelve a saltarse en el ensayo.
+    #[test]
+    fn a_connection_probe_also_runs_in_a_rehearsal() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible/playbooks");
+        let mut seen = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            let text = std::fs::read_to_string(&path).unwrap();
+            let plays: Vec<serde_yaml::Value> = serde_yaml::from_str(&text).unwrap();
+            for play in &plays {
+                for list in ["pre_tasks", "tasks"] {
+                    for task in play.get(list).and_then(|t| t.as_sequence()).into_iter().flatten() {
+                        if task.get("ansible.builtin.wait_for_connection").is_some() {
+                            seen += 1;
+                            assert_eq!(
+                                task.get("check_mode").and_then(|v| v.as_bool()),
+                                Some(false),
+                                "{}: «{}» se salta en el ensayo",
+                                path.display(),
+                                task.get("name").and_then(|n| n.as_str()).unwrap_or("?")
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        assert!(seen >= 2, "no se encontró ninguna prueba de conexión");
+    }
+
     // v2: sin inventario y sin referencias. Roturas que atrapa: aceptar un
     // op:// en el manifiesto; un default en un secreto; become_password_ref en
     // v2; un nombre de secreto en minúsculas.

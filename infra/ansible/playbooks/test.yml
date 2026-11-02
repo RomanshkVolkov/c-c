@@ -6,9 +6,14 @@
   tasks:
     # Antes de la etapa 1 el inventario apunta a un usuario que aún no existe:
     # en ese caso se prueba como root por el 22.
+    #
+    # En un ensayo (--check) Ansible se salta wait_for_connection y command:
+    # el ensayo no probaba nada. Las dos sólo leen, así que corren también en
+    # el ensayo (`check_mode: false`).
     - name: ¿Se entra como dice el inventario?
       ansible.builtin.wait_for_connection:
         timeout: 15
+      check_mode: false
       ignore_errors: true
       register: probe
 
@@ -25,6 +30,7 @@
       ansible.builtin.command: sh -c 'echo "$(whoami)@$(hostname) · $(. /etc/os-release && echo $PRETTY_NAME)"'
       register: who
       changed_when: false
+      check_mode: false
 
     - name: Resultado
       ansible.builtin.debug:
