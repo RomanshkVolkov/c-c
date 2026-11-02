@@ -10,8 +10,24 @@
       config del servidor en cac: su referencia de 1Password.
     quiet: true
 
+# El módulo pide el NOMBRE de la zona; con el Zone ID (32 hex, lo que más se
+# ve en el panel de Cloudflare) falla con «No zone found with name …» (gstd,
+# 2-nov-2026). Se dice antes, con el remedio.
+- name: La zona es un nombre, no un Zone ID
+  ansible.builtin.assert:
+    that: dns_zone is not regex('^[0-9a-f]{32}$')
+    fail_msg: >-
+      dns_zone es el nombre de la zona de Cloudflare (p. ej. guz-studio.dev), no
+      su Zone ID. Cámbialo en la config del servidor en cac.
+    quiet: true
+
 # El registro A del servidor y su wildcard: sin ellos no hay a quién emitirle.
 # Sin proxy de Cloudflare (nube gris): Traefik termina el TLS.
+#
+# Corre en el servidor, no en la máquina de quien lanza: así el token sólo se
+# usa desde la IP del servidor (también lo usa Traefik ahí) y se le puede
+# limitar a ella en Cloudflare. Con pipelining los argumentos van por stdin y
+# no tocan el disco del servidor.
 - name: Registros DNS del servidor
   community.general.cloudflare_dns:
     zone: "{{ dns_zone }}"
@@ -24,11 +40,7 @@
   loop:
     - "{{ base_domain }}"
     - "*.{{ base_domain }}"
-  delegate_to: localhost
   become: false
-  vars:
-    # El Python del venv de quien lo corre, no el del servidor.
-    ansible_python_interpreter: "{{ ansible_playbook_python }}"
   no_log: true
 
 # El token entra por stdin y la clave como ruta: ninguno llega a la línea de
