@@ -83,6 +83,7 @@ export interface StartedRun {
 export type ProvisioningRisk = "read" | "change" | "destructive";
 
 export type ProvisioningRequestStatus =
+  | "discarded"
   | "checking"
   | "awaiting_approval"
   | "approved"

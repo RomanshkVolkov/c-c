@@ -22,7 +22,8 @@ vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => confirmar }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("@/lib/clipboard", () => ({ copyText: vi.fn(async () => {}) }));
 
-const { default: ProvisioningRequests, canApprove, grantCommand } = await import("./ProvisioningRequests");
+const { default: ProvisioningRequests, canApprove, grantCommand, isStale, STALE_CHECK_MS } = await import("./ProvisioningRequests");
+const { useAuthStore } = await import("@/store/auth.store");
 const en = (await import("@/locales/en/common.json")).default.provisionRequests;
 const disabled = (el: HTMLElement) => (el as HTMLButtonElement).disabled;
 
@@ -115,6 +116,65 @@ describe("aprobar sigue el protocolo", () => {
     await waitFor(() => expect(api.post).toHaveBeenCalled());
     expect(confirmar).not.toHaveBeenCalled();
     expect(api.post.mock.calls[0][1]).toMatchObject({ approve: false });
+  });
+});
+
+// Una petición que se quedó sin ensayo decía «ensayando» hasta caducar (24 h)
+// y no había forma de quitarla (gstd, 2-nov-2026).
+describe("una petición que se quedó sin ensayo", () => {
+  const old = () => new Date(Date.now() - STALE_CHECK_MS - 60_000).toISOString();
+  const asMe = (id: string) => useAuthStore.setState({ session: { id } } as never);
+
+  // Roturas que atrapa: dar por abandonado un ensayo que acaba de empezar, o
+  // una petición que ya pasó del ensayo.
+  it("es la que lleva un rato ensayando y nada más", () => {
+    const now = Date.now();
+    expect(isStale({ status: "checking", createdAt: new Date(now - STALE_CHECK_MS - 1).toISOString() }, now)).toBe(true);
+    expect(isStale({ status: "checking", createdAt: new Date(now - 60_000).toISOString() }, now)).toBe(false);
+    expect(isStale({ status: "awaiting_approval", createdAt: new Date(now - STALE_CHECK_MS * 10).toISOString() }, now)).toBe(false);
+  });
+
+  // Roturas que atrapa: seguir diciendo «ensayando»; no dejar descartarla a
+  // quien la pidió; descartar sin confirmar, o a otra ruta.
+  it("lo dice, y quien la pidió la descarta confirmando", async () => {
+    asMe("u-1");
+    serve(request({ status: "checking", check: null, flags: [], createdAt: old() }));
+    render(<ProvisioningRequests server={server} canDecide={false} />);
+    expect(await screen.findByText(en.staleBadge)).toBeTruthy();
+    expect(screen.queryByText(en.status.checking)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: en.discard }));
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    expect(confirmar).toHaveBeenCalledOnce();
+    expect(api.post).toHaveBeenCalledWith("/api/v1/servers/srv-1/provisioning-requests/rq-1/discard", {}, true);
+  });
+
+  it("si no se confirma, no se descarta", async () => {
+    asMe("u-1");
+    confirmar.mockResolvedValueOnce(false);
+    serve(request({ status: "checking", check: null, flags: [], createdAt: old() }));
+    render(<ProvisioningRequests server={server} canDecide={false} />);
+    fireEvent.click(await screen.findByRole("button", { name: en.discard }));
+    await waitFor(() => expect(confirmar).toHaveBeenCalled());
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  // Roturas que atrapa: ofrecer descartar la de otro a un miembro; no
+  // ofrecérselo a un admin; ofrecerlo mientras el ensayo sigue en marcha.
+  it("la de otro sólo la descarta un admin, y una reciente nadie", async () => {
+    asMe("u-otro");
+    serve(request({ status: "checking", check: null, flags: [], createdAt: old() }));
+    const { unmount } = render(<ProvisioningRequests server={server} canDecide={false} />);
+    expect(await screen.findByText(en.staleBadge)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: en.discard })).toBeNull();
+    unmount();
+    render(<ProvisioningRequests server={server} canDecide />);
+    expect(await screen.findByRole("button", { name: en.discard })).toBeTruthy();
+    cleanup();
+    asMe("u-1");
+    serve(request({ status: "checking", check: null, flags: [] }));
+    render(<ProvisioningRequests server={server} canDecide />);
+    expect(await screen.findByText(en.status.checking)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: en.discard })).toBeNull();
   });
 });
 

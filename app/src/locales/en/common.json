@@ -856,8 +856,15 @@
       "failed": "failed",
       "verify_failed": "verification failed",
       "violated": "changed something as a read",
-      "expired": "expired"
+      "expired": "expired",
+      "discarded": "discarded"
     },
+    "staleBadge": "no dry run",
+    "stale": "It was left without its dry run: nobody is running it. Nothing changed; to apply, rehearse again.",
+    "discard": "Discard",
+    "discardTitle": "Discard the {{playbook}} request?",
+    "discardBody": "It was never rehearsed, so discarding it doesn't touch the server. If its dry run arrives later, it won't be taken.",
+    "discarded": "Request discarded",
     "preAuthorized": "pre-authorized",
     "askedBy": "Asked by {{name}} {{when}} · config v{{seq}}",
     "viaAgent": "via agent",

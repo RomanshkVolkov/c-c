@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useAuthStore } from "@/store/auth.store";
 import type { APIResponse } from "@/types/auth";
 import type { ProvisioningRequest, RiskFlag } from "@/types/server-config";
 
@@ -28,6 +29,18 @@ const FLAG_DOT: Record<RiskFlag["level"], string> = {
   amber: "bg-amber-500",
   info: "bg-muted-foreground",
 };
+
+/**
+ * Pasado esto, una petición que sigue «ensayando» ya no la ensaya nadie: la
+ * app se cerró, se cayó la red o el backend rechazó el ensayo. Un ensayo de
+ * etapa tarda unos minutos; quince es holgado.
+ */
+export const STALE_CHECK_MS = 15 * 60_000;
+
+/** Se quedó sin ensayo: se enseña así y se puede descartar. */
+export function isStale(req: Pick<ProvisioningRequest, "status" | "createdAt">, now = Date.now()): boolean {
+  return req.status === "checking" && now - new Date(req.createdAt).getTime() > STALE_CHECK_MS;
+}
 
 /** El comando con el que se corre una petición autorizada. */
 export function grantCommand(serverName: string, id: string): string {
@@ -82,7 +95,7 @@ export default function ProvisioningRequests({
     void load();
   }, [load, refreshKey]);
 
-  const anyLive = requests.some((r) => LIVE.has(r.status));
+  const anyLive = requests.some((r) => LIVE.has(r.status) && !isStale(r));
   useEffect(() => {
     if (!anyLive) return;
     const id = setInterval(() => void load(), 15_000);
@@ -127,6 +140,30 @@ function RequestRow({
   const [busy, setBusy] = useState(false);
   const red = req.flags.some((f) => f.level === "red");
   const awaiting = req.status === "awaiting_approval";
+  const me = useAuthStore((s) => s.session?.id);
+  const stale = isStale(req);
+  // La descarta quien la pidió (su agente, con su token, también) o un admin;
+  // el backend lo vuelve a mirar.
+  const canDiscard = stale && (canDecide || (!!me && req.requestedBy === me));
+
+  const discard = async () => {
+    const ok = await confirm({
+      title: t("common:provisionRequests.discardTitle", { playbook: req.playbook }),
+      description: t("common:provisionRequests.discardBody"),
+      confirmText: t("common:provisionRequests.discard"),
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api.post(`/api/v1/servers/${server.id}/provisioning-requests/${req.id}/discard`, {}, true);
+      toast.success(t("common:provisionRequests.discarded"));
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const decide = async (approve: boolean) => {
     if (approve) {
@@ -160,7 +197,7 @@ function RequestRow({
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="font-mono text-xs">{req.playbook}</span>
         <Badge variant={RISK_VARIANT[req.risk]}>{t(`common:provisionRequests.risk.${req.risk}`)}</Badge>
-        <Badge variant="outline">{t(`common:provisionRequests.status.${req.status}`)}</Badge>
+        <Badge variant="outline">{stale ? t("common:provisionRequests.staleBadge") : t(`common:provisionRequests.status.${req.status}`)}</Badge>
         {req.autoApproved && <Badge variant="secondary">{t("common:provisionRequests.preAuthorized")}</Badge>}
       </div>
       <p className="text-xs text-muted-foreground">
@@ -172,6 +209,16 @@ function RequestRow({
         {req.source === "mcp" && ` · ${t("common:provisionRequests.viaAgent")}`}
       </p>
       {req.reason && <p className="text-xs">{req.reason}</p>}
+      {stale && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>{t("common:provisionRequests.stale")}</span>
+          {canDiscard && (
+            <Button variant="outline" size="sm" className="h-6 px-2 text-xs" disabled={busy} onClick={() => void discard()}>
+              {t("common:provisionRequests.discard")}
+            </Button>
+          )}
+        </div>
+      )}
 
       {req.flags.length > 0 && (
         <ul className="space-y-0.5">

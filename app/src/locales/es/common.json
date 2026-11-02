@@ -856,8 +856,15 @@
       "failed": "falló",
       "verify_failed": "la verificación falló",
       "violated": "cambió algo siendo lectura",
-      "expired": "caducada"
+      "expired": "caducada",
+      "discarded": "descartada"
     },
+    "staleBadge": "sin ensayo",
+    "stale": "Se quedó sin ensayo: nadie lo está corriendo. No cambia nada; para aplicar, ensaya de nuevo.",
+    "discard": "Descartar",
+    "discardTitle": "¿Descartar la petición de {{playbook}}?",
+    "discardBody": "No llegó a ensayarse, así que descartarla no toca el servidor. Si luego llega su ensayo, ya no entra.",
+    "discarded": "Petición descartada",
     "preAuthorized": "pre-autorizada",
     "askedBy": "Pidió {{name}} {{when}} · config v{{seq}}",
     "viaAgent": "vía agente",
