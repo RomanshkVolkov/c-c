@@ -386,6 +386,27 @@ describe("aplicar con la config de cac", () => {
     expect(posts("/provisioning-runs")).toHaveLength(0);
   });
 
+  // Un ensayo que no llega a arrancar (el secreto no se lee: el de gstd en la
+  // otra cuenta de 1Password, 2-nov-2026) dejaba la petición «ensayando»
+  // hasta caducar. Roturas que atrapa: no cerrarla; cerrarla como si hubiera
+  // salido bien; perder el porqué; tragarse el error.
+  it("un ensayo que no arranca cierra su petición como fallido, con el porqué", async () => {
+    const why = "ops_password: could not read secret 'op://Private/x/password'";
+    const base = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "ansible_run_with_config") throw new Error(why);
+      return base(cmd, args);
+    });
+    render(<ServerProvision />);
+    const ensayar = (await screen.findByRole("button", { name: /^(ensayar|rehearse)$/i })) as HTMLButtonElement;
+    await waitFor(() => expect(ensayar.disabled).toBe(false));
+    await act(async () => fireEvent.click(ensayar));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/api/v1/servers/srv-1/provisioning-requests/rq-1/check", report, true));
+    expect(invoke.mock.calls.find(([c]) => c === "ansible_check_report")![1]).toEqual({ lines: [why], exitCode: -1 });
+    const { toast } = await import("sonner");
+    expect(toast.error).toHaveBeenCalledWith(why);
+  });
+
   // Rotura que atrapa: seguir ensayando la etapa 2 cuando el ensayo de la 1
   // falló, o no seguir cuando salió bien.
   it("la plantilla se ensaya en orden y para en el primer ensayo que falla", async () => {

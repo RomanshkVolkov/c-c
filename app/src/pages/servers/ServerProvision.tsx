@@ -349,6 +349,7 @@ export default function ServerProvision() {
           true,
         );
         if (!res?.success || !res.data) throw new Error(res?.error ?? "provisioning-requests");
+        const checkPath = `/api/v1/servers/${server.id}/provisioning-requests/${res.data.id}/check`;
         const { ended } = await execute(null, (channel) =>
           invoke<StartedRun>("ansible_run_with_config", {
             projectDir: prefs.projectDir,
@@ -357,11 +358,19 @@ export default function ServerProvision() {
             check: true,
             onEvent: channel,
           }).then((r) => r.runId),
-        );
+        ).catch(async (e) => {
+          // El ensayo no llegó a arrancar (un secreto que no se lee, Ansible
+          // que no está): la petición ya está abierta y, sin su ensayo, se
+          // quedaba «ensayando» hasta caducar. Se cierra como ensayo fallido,
+          // con el porqué, y no se puede aprobar sin reconocerlo.
+          const report = await invoke<unknown>("ansible_check_report", { lines: [String(e instanceof Error ? e.message : e)], exitCode: -1 }).catch(() => null);
+          if (report) await api.put(checkPath, report, true).catch(() => {});
+          throw e;
+        });
         const { status, code, lines: out } = await ended;
         if (status === "cancelled") throw new Error(t("common:provision.rehearseCancelled"));
         const report = await invoke<unknown>("ansible_check_report", { lines: out, exitCode: code ?? -1 });
-        await api.put(`/api/v1/servers/${server.id}/provisioning-requests/${res.data.id}/check`, report, true);
+        await api.put(checkPath, report, true);
         setRequestsKey((k) => k + 1);
         if (code !== 0) break;
       }
