@@ -1,0 +1,62 @@
+---
+# Lo que necesita cualquier etapa con certificado wildcard por DNS en
+# Cloudflare (Swarm + Traefik, Kubernetes + cert-manager): el token, la zona
+# bien escrita, y el registro A del servidor con su wildcard. Antes vivía en el
+# rol de Traefik, y k8s no creaba los registros: en un servidor nuevo whoami no
+# tenía nombre (2-nov-2026).
+- name: Hay token de DNS
+  ansible.builtin.assert:
+    that: cloudflare_dns_token | default('') | length > 0
+    fail_msg: >-
+      Falta cloudflare_dns_token. Sale del secreto CLOUDFLARE_DNS_TOKEN de la
+      config del servidor en cac: su referencia de 1Password.
+    quiet: true
+
+# El módulo pide el NOMBRE de la zona; con el Zone ID (32 hex, lo que más se
+# ve en el panel de Cloudflare) falla con «No zone found with name …» (gstd,
+# 2-nov-2026). Se dice antes, con el remedio.
+- name: La zona es un nombre, no un Zone ID
+  ansible.builtin.assert:
+    that: dns_zone is not regex('^[0-9a-f]{32}$')
+    fail_msg: >-
+      dns_zone es el nombre de la zona de Cloudflare (p. ej. guz-studio.dev), no
+      su Zone ID. Cámbialo en la config del servidor en cac.
+    quiet: true
+
+# base_domain es el subdominio DEL SERVIDOR dentro de la zona
+# (gstd.guz-studio.dev), nunca la zona misma: con la raíz, el A chocaba con el
+# CNAME de la web y el wildcard *.<zona> se llevaba a este servidor todo
+# subdominio sin registro propio (gstd, 2-nov-2026).
+- name: base_domain es un subdominio de la zona, no la zona
+  ansible.builtin.assert:
+    that:
+      - base_domain | lower != dns_zone | lower
+      - (base_domain | lower).endswith('.' ~ (dns_zone | lower))
+    fail_msg: >-
+      base_domain ({{ base_domain }}) tiene que ser un subdominio propio del
+      servidor dentro de {{ dns_zone }} (p. ej. {{ inventory_hostname }}.{{ dns_zone }}),
+      no la zona: se crearían {{ base_domain }} y *.{{ base_domain }} apuntando a
+      este servidor. Cámbialo en la config del servidor en cac.
+    quiet: true
+
+# El registro A del servidor y su wildcard: sin ellos no hay a quién emitirle.
+# Sin proxy de Cloudflare (nube gris): Traefik termina el TLS.
+#
+# Corre en el servidor, no en la máquina de quien lanza: así el token sólo se
+# usa desde la IP del servidor (también lo usa Traefik ahí) y se le puede
+# limitar a ella en Cloudflare. Con pipelining los argumentos van por stdin y
+# no tocan el disco del servidor.
+- name: Registros DNS del servidor
+  community.general.cloudflare_dns:
+    zone: "{{ dns_zone }}"
+    record: "{{ item }}"
+    type: A
+    value: "{{ public_ip }}"
+    proxied: false
+    solo: true
+    api_token: "{{ cloudflare_dns_token }}"
+  loop:
+    - "{{ base_domain }}"
+    - "*.{{ base_domain }}"
+  become: false
+  no_log: true

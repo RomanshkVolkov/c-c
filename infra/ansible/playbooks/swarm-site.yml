@@ -9,5 +9,6 @@
     - {role: base, tags: [base]}
     - {role: docker, tags: [docker]}
     - {role: swarm, tags: [swarm]}
+    - {role: dns_records, tags: [dns, traefik]}
     - {role: traefik, tags: [traefik]}
     - {role: whoami, tags: [whoami]}

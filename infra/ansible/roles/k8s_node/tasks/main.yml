@@ -68,7 +68,10 @@
     filename: kubernetes
     state: present
 
+# En un ensayo sin los paquetes instalados no se ve: el repo de arriba no se
+# añade en --check (ver k8s-site.yml).
 - name: Paquetes fijados
+  when: not (k8s_rehearsal_blind_install | default(false))
   ansible.builtin.apt:
     name:
       - "containerd.io={{ containerd_version }}-*"
@@ -81,6 +84,7 @@
     lock_timeout: 180
 
 - name: Que apt no los suba solo
+  when: not (k8s_rehearsal_blind_install | default(false))
   ansible.builtin.dpkg_selections:
     name: "{{ item }}"
     selection: hold
@@ -100,16 +104,20 @@
       containerd config default
       | sed 's/SystemdCgroup = false/SystemdCgroup = true/'
       > /etc/containerd/config.toml
-  when: containerd_cfg.rc != 0
+  when:
+    - not (k8s_rehearsal_blind_install | default(false))
+    - containerd_cfg.rc != 0
   notify: Reiniciar containerd
 
 - name: containerd activo
+  when: not (k8s_rehearsal_blind_install | default(false))
   ansible.builtin.systemd_service:
     name: containerd
     state: started
     enabled: true
 
 - name: kubelet al arrancar
+  when: not (k8s_rehearsal_blind_install | default(false))
   ansible.builtin.systemd_service:
     name: kubelet
     enabled: true

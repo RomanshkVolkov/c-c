@@ -2,11 +2,45 @@
 # Kubernetes de un nodo con kubeadm, replicando pixel-vps: containerd, Cilium,
 # MetalLB, Envoy Gateway y cert-manager, y whoami como prueba. Idempotente.
 # Antes, si el servidor tenía Swarm: swarm-teardown.
+#
+# **El ensayo de un servidor sin Kubernetes es parcial, y lo dice.** En
+# --check no se añade el repo ni se instala nada, así que lo que viene después
+# (los paquetes, containerd, kubeadm init, helm y lo que va encima) no se puede
+# ver: fallaría por no encontrar lo que el propio playbook instala antes. Esas
+# partes se saltan en el ensayo y se avisa; con el clúster ya montado, el
+# ensayo es entero.
 - name: Servidor Kubernetes (kubeadm)
   hosts: k8s_control_plane
   become: true
+  pre_tasks:
+    - name: ¿Están los paquetes de Kubernetes?
+      ansible.builtin.stat:
+        path: /usr/bin/kubeadm
+      register: kubeadm_bin
+
+    - name: ¿Hay clúster?
+      ansible.builtin.stat:
+        path: /etc/kubernetes/admin.conf
+      register: cluster_admin
+
+    - name: Lo que el ensayo no puede ver
+      ansible.builtin.set_fact:
+        k8s_rehearsal_blind_install: "{{ ansible_check_mode and not kubeadm_bin.stat.exists }}"
+        k8s_rehearsal_blind_cluster: "{{ ansible_check_mode and not cluster_admin.stat.exists }}"
+
+    - name: Ensayo parcial
+      ansible.builtin.debug:
+        msg: >-
+          Este servidor aún no tiene {{ 'Kubernetes instalado' if k8s_rehearsal_blind_install else 'clúster' }}:
+          el ensayo enseña el kernel, los repos y los registros DNS, pero no
+          {{ 'la instalación de paquetes, ' if k8s_rehearsal_blind_install else '' }}kubeadm init
+          ni lo que va encima (Cilium, MetalLB, Envoy Gateway, cert-manager, whoami).
+          Eso sólo se ve corriéndolo.
+      when: k8s_rehearsal_blind_cluster
+
   roles:
-    - base
-    - k8s_node
-    - k8s_control_plane
-    - k8s_addons
+    - {role: base, tags: [base]}
+    - {role: dns_records, tags: [dns]}
+    - {role: k8s_node, tags: [k8s_node]}
+    - {role: k8s_control_plane, tags: [k8s_control_plane], when: not k8s_rehearsal_blind_cluster}
+    - {role: k8s_addons, tags: [k8s_addons], when: not k8s_rehearsal_blind_cluster}

@@ -1565,6 +1565,43 @@ playbooks:
         assert!(waits, "el deshacer no comprueba que sshd escucha en ese puerto");
     }
 
+    // Una etapa con wildcard por DNS crea sus registros (rol dns_records) y
+    // declara lo que ese rol valida; y k8s, en un servidor sin clúster, se
+    // ensaya hasta donde se puede ver. Antes k8s no creaba los registros, no
+    // pedía dns_zone, y su ensayo fallaba con «No package matching
+    // 'containerd.io'» (lo que el propio playbook instala antes; medido en un
+    // Ubuntu 24.04 limpio, 2-nov-2026). Roturas que atrapa: una etapa sin sus
+    // registros; un rol de DNS sin dns_zone o sin el token declarados; el
+    // control plane o los addons ensayados sin clúster.
+    #[test]
+    fn a_dns_stage_makes_its_records_and_k8s_rehearses_what_it_can_see() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let manifest = parse_manifest(&std::fs::read_to_string(root.join(MANIFEST_FILE)).unwrap()).unwrap();
+        let roles_of = |file: &str| -> Vec<serde_yaml::Value> {
+            let plays: Vec<serde_yaml::Value> = serde_yaml::from_str(&std::fs::read_to_string(root.join(file)).unwrap()).unwrap();
+            plays[0]["roles"].as_sequence().cloned().unwrap_or_default()
+        };
+        let name = |r: &serde_yaml::Value| r.as_str().map(str::to_string).or_else(|| r.get("role").and_then(|n| n.as_str()).map(str::to_string)).unwrap_or_default();
+        for id in ["swarm", "k8s"] {
+            let pb = manifest.playbooks.iter().find(|p| p.id == id).unwrap();
+            assert!(roles_of(&pb.file).iter().any(|r| name(r) == "dns_records"), "{id} no crea sus registros DNS");
+            for var in ["dns_zone", "base_domain", "public_ip"] {
+                assert!(pb.vars.iter().any(|v| v.name == var && v.required), "{id} no pide {var}");
+            }
+            assert!(pb.vars.iter().any(|v| v.from.as_deref() == Some("CLOUDFLARE_DNS_TOKEN")), "{id} no declara el token de DNS");
+        }
+        let k8s = roles_of("playbooks/k8s-site.yml");
+        for role in ["k8s_control_plane", "k8s_addons"] {
+            let r = k8s.iter().find(|r| name(r) == role).unwrap();
+            let when = r.get("when").and_then(|w| w.as_str()).unwrap_or("");
+            assert!(when.contains("k8s_rehearsal_blind_cluster"), "{role} se ensaya sin clúster");
+        }
+        let node = std::fs::read_to_string(root.join("roles/k8s_node/tasks/main.yml")).unwrap();
+        let tasks = ansible_tasks(&node);
+        let packages = tasks.iter().find(|t| t.get("ansible.builtin.apt").is_some()).unwrap();
+        assert!(serde_yaml::to_string(&packages["when"]).unwrap().contains("k8s_rehearsal_blind_install"), "los paquetes se ensayan sin su repo");
+    }
+
     // v2: sin inventario y sin referencias. Roturas que atrapa: aceptar un
     // op:// en el manifiesto; un default en un secreto; become_password_ref en
     // v2; un nombre de secreto en minúsculas.
