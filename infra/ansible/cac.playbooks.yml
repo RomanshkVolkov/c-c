@@ -91,7 +91,7 @@ playbooks:
       - { name: ops_user, default: infra_devops }
       - { name: public_ip, required: true }
       - { name: dns_zone, description: "El nombre de la zona en Cloudflare (guz-studio.dev), no su Zone ID.", required: true }
-      - { name: base_domain, description: "El subdominio del servidor: *.<base_domain> apunta aquí.", required: true }
+      - { name: base_domain, description: "El subdominio propio del servidor dentro de la zona (gstd.guz-studio.dev), nunca la zona misma: <base_domain> y *.<base_domain> apuntarán aquí.", required: true }
       - { name: acme_email, description: El correo de Let's Encrypt., required: true }
       - { name: acme_dns_provider, default: cloudflare }
       - { name: firewall_web_ports, default: [80, 443] }

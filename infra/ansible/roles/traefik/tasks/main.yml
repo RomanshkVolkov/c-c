@@ -21,6 +21,22 @@
       su Zone ID. Cámbialo en la config del servidor en cac.
     quiet: true
 
+# base_domain es el subdominio DEL SERVIDOR dentro de la zona
+# (gstd.guz-studio.dev), nunca la zona misma: con la raíz, el A chocaba con el
+# CNAME de la web y el wildcard *.<zona> se llevaba a este servidor todo
+# subdominio sin registro propio (gstd, 2-nov-2026).
+- name: base_domain es un subdominio de la zona, no la zona
+  ansible.builtin.assert:
+    that:
+      - base_domain | lower != dns_zone | lower
+      - (base_domain | lower).endswith('.' ~ (dns_zone | lower))
+    fail_msg: >-
+      base_domain ({{ base_domain }}) tiene que ser un subdominio propio del
+      servidor dentro de {{ dns_zone }} (p. ej. {{ inventory_hostname }}.{{ dns_zone }}),
+      no la zona: se crearían {{ base_domain }} y *.{{ base_domain }} apuntando a
+      este servidor. Cámbialo en la config del servidor en cac.
+    quiet: true
+
 # El registro A del servidor y su wildcard: sin ellos no hay a quién emitirle.
 # Sin proxy de Cloudflare (nube gris): Traefik termina el TLS.
 #
