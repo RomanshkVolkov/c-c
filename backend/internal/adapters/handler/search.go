@@ -70,9 +70,11 @@ func (h *searchHandler) Search(w http.ResponseWriter, r *http.Request) {
 }
 
 // agentFoundNothing: si es una búsqueda del MCP que no le dio nada al agente
-// (ver domain.SearchMiss). Las de la app no se guardan.
+// (ver domain.SearchMiss), o sólo lo que casaba con alguna de sus palabras
+// (`partial`): eso también es no haber encontrado lo que preguntó, y es lo
+// que la revisión necesita ver. Las de la app no se guardan.
 func agentFoundNothing(ctx context.Context, res domain.SearchResults) bool {
-	return domain.ViaFrom(ctx) == domain.ViaMCP && res.NothingForAnAgent()
+	return domain.ViaFrom(ctx) == domain.ViaMCP && (res.NothingForAnAgent() || res.Partial)
 }
 
 // MemberOrgs: las organizaciones de las que el token es miembro, según sus

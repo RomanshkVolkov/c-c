@@ -36,6 +36,10 @@ func TestOnlyAnAgentSearchThatFoundNothingIsRecorded(t *testing.T) {
 	if agentFoundNothing(app, nada) {
 		t.Error("se guarda una búsqueda de la app")
 	}
+	// Lo que casa sólo con alguna palabra no es lo que preguntó.
+	if !agentFoundNothing(mcp, domain.SearchResults{Docs: conDoc.Docs, Partial: true}) {
+		t.Error("una búsqueda que sólo dio aciertos parciales no se guarda")
+	}
 }
 
 type fakeSearcher struct {

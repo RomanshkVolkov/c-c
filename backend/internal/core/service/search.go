@@ -25,6 +25,45 @@ func NewSearchService(repo *repository.SearchRepository) *SearchService {
 // A short query returns nothing rather than everything. One or two letters
 // match most of a database, which is a slow way to be useless.
 func (s *SearchService) Search(query, orgID, userID string, limit int) (domain.SearchResults, error) {
+	if limit <= 0 || limit > 20 {
+		limit = 8
+	}
+	p := s.plan(query)
+	out, err := s.searchWith(query, p, orgID, userID, limit)
+	if err != nil || !out.NothingForAnAgent() || p.loose == "" {
+		return out, err
+	}
+	l, err := s.looseWith(query, p.loose, orgID, userID, limit)
+	if err != nil || l.NothingForAnAgent() {
+		return out, err
+	}
+	out.Tasks, out.Notes, out.Docs, out.Partial = l.Tasks, l.Notes, l.Docs, true
+	return out, nil
+}
+
+// searchPlan: cómo se busca una consulta. `id`, si es un id pegado (se busca
+// la cosa que se llama así, nada más); `strict`, todas las palabras, cada
+// una también por su raíz; `loose`, alguna de ellas, para la segunda vuelta
+// (sólo con más de una palabra). Ver domain.SearchTSQueryWith.
+type searchPlan struct{ id, strict, loose string }
+
+func (s *SearchService) plan(query string) searchPlan {
+	if len(strings.TrimSpace(query)) < 2 {
+		return searchPlan{}
+	}
+	if id, ok := domain.SearchID(query); ok {
+		return searchPlan{id: id}
+	}
+	stems := s.repo.Stems(domain.SearchStemWords(query))
+	p := searchPlan{strict: domain.SearchTSQueryWith(query, stems, false)}
+	if domain.SearchWordCount(query) > 1 {
+		p.loose = domain.SearchTSQueryWith(query, stems, true)
+	}
+	return p
+}
+
+// searchWith: la primera vuelta en una organización.
+func (s *SearchService) searchWith(query string, p searchPlan, orgID, userID string, limit int) (domain.SearchResults, error) {
 	var out domain.SearchResults
 	out.Tasks, out.Notes = []domain.SearchHit{}, []domain.SearchHit{}
 	out.People, out.Messages, out.DMs = []domain.SearchHit{}, []domain.SearchHit{}, []domain.SearchHit{}
@@ -33,15 +72,17 @@ func (s *SearchService) Search(query, orgID, userID string, limit int) (domain.S
 	if len(strings.TrimSpace(query)) < 2 {
 		return out, nil
 	}
-	if limit <= 0 || limit > 20 {
-		limit = 8
+	if p.id != "" {
+		out.Tasks, out.Notes, out.Docs = s.repo.ByID(p.id, orgID, userID)
+		stampOrg(orgID, out.Tasks, out.Docs)
+		return out, nil
 	}
 
 	var err error
-	if out.Tasks, err = s.repo.Tasks(query, orgID, limit); err != nil {
+	if out.Tasks, err = s.repo.TasksTS(query, p.strict, orgID, limit); err != nil {
 		return out, err
 	}
-	if out.Notes, err = s.repo.Notes(query, userID, limit); err != nil {
+	if out.Notes, err = s.repo.NotesTS(query, p.strict, userID, limit); err != nil {
 		return out, err
 	}
 	if out.People, err = s.repo.People(query, orgID, userID, limit); err != nil {
@@ -53,17 +94,39 @@ func (s *SearchService) Search(query, orgID, userID string, limit int) (domain.S
 	if out.DMs, err = s.repo.DMs(query, orgID, userID, limit); err != nil {
 		return out, err
 	}
-	if out.Docs, err = s.repo.Docs(query, orgID, limit); err != nil {
+	if out.Docs, err = s.repo.DocsTS(query, p.strict, orgID, limit); err != nil {
 		return out, err
 	}
-	// Todo lo que sale filtrado por la org es de esa org. Los directos traen la
-	// suya de la consulta, y las notas no son de ninguna.
-	for _, hits := range [][]domain.SearchHit{out.Tasks, out.People, out.Messages, out.Docs} {
+	stampOrg(orgID, out.Tasks, out.People, out.Messages, out.Docs)
+	return out, nil
+}
+
+// looseWith: la segunda vuelta, con alguna de las palabras, sólo en lo que
+// le llega a un agente (tareas, notas y docs).
+func (s *SearchService) looseWith(query, tsq, orgID, userID string, limit int) (domain.SearchResults, error) {
+	var out domain.SearchResults
+	var err error
+	if out.Tasks, err = s.repo.TasksTS(query, tsq, orgID, limit); err != nil {
+		return out, err
+	}
+	if out.Notes, err = s.repo.NotesTS(query, tsq, userID, limit); err != nil {
+		return out, err
+	}
+	if out.Docs, err = s.repo.DocsTS(query, tsq, orgID, limit); err != nil {
+		return out, err
+	}
+	stampOrg(orgID, out.Tasks, out.Docs)
+	return out, nil
+}
+
+// stampOrg: todo lo que sale filtrado por la org es de esa org. Los directos
+// traen la suya de la consulta, y las notas no son de ninguna.
+func stampOrg(orgID string, lists ...[]domain.SearchHit) {
+	for _, hits := range lists {
 		for i := range hits {
 			hits[i].OrgID = orgID
 		}
 	}
-	return out, nil
 }
 
 // SearchOrgs hace la misma búsqueda en varias organizaciones y junta lo que
@@ -73,6 +136,10 @@ func (s *SearchService) Search(query, orgID, userID string, limit int) (domain.S
 //
 // Las notas son de la persona y no de una org, así que salen en cada una: se
 // quedan una vez.
+//
+// La segunda vuelta («con alguna palabra») se decide sobre **todas** las
+// orgs juntas, no en cada una: si una org casa con todas las palabras, lo
+// parcial de otra no se mezcla con eso.
 func (s *SearchService) SearchOrgs(query string, orgIDs []string, userID string, limit int) (domain.SearchResults, error) {
 	var out domain.SearchResults
 	out.Tasks, out.Notes = []domain.SearchHit{}, []domain.SearchHit{}
@@ -96,8 +163,9 @@ func (s *SearchService) SearchOrgs(query string, orgIDs []string, userID string,
 	for _, k := range []string{"tasks", "notes", "people", "messages", "dms", "docs"} {
 		seen[k] = map[string]bool{}
 	}
+	p := s.plan(query)
 	for _, org := range orgIDs {
-		r, err := s.Search(query, org, userID, limit)
+		r, err := s.searchWith(query, p, org, userID, limit)
 		if err != nil {
 			return out, err
 		}
@@ -108,6 +176,19 @@ func (s *SearchService) SearchOrgs(query string, orgIDs []string, userID string,
 		merge(&out.DMs, seen["dms"], r.DMs)
 		merge(&out.Docs, seen["docs"], r.Docs)
 	}
+	if !out.NothingForAnAgent() || p.loose == "" {
+		return out, nil
+	}
+	for _, org := range orgIDs {
+		r, err := s.looseWith(query, p.loose, org, userID, limit)
+		if err != nil {
+			return out, err
+		}
+		merge(&out.Tasks, seen["tasks"], r.Tasks)
+		merge(&out.Notes, seen["notes"], r.Notes)
+		merge(&out.Docs, seen["docs"], r.Docs)
+	}
+	out.Partial = !out.NothingForAnAgent()
 	return out, nil
 }
 

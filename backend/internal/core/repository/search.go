@@ -31,11 +31,15 @@ func like(q string) string { return "%" + strings.ToLower(strings.TrimSpace(q)) 
 // fuera de su hilo es justo lo que el comentario de este fichero dice que no se
 // hace.
 func (r *SearchRepository) Tasks(query, orgID string, limit int) ([]domain.SearchHit, error) {
+	return r.TasksTS(query, domain.SearchTSQuery(query), orgID, limit)
+}
+
+// TasksTS: Tasks con la consulta ya armada (`domain.SearchTSQueryWith`).
+func (r *SearchRepository) TasksTS(query, tsq, orgID string, limit int) ([]domain.SearchHit, error) {
 	out := []domain.SearchHit{}
 	if orgID == "" {
 		return out, nil
 	}
-	tsq := domain.SearchTSQuery(query)
 	if tsq == "" {
 		return out, nil
 	}
@@ -166,8 +170,12 @@ func (r *SearchRepository) tasksLike(query, orgID string, limit int) ([]domain.S
 // completo y fragmento: la nota es de quien busca, así que enseñarle el trozo
 // no saca nada de ningún sitio.
 func (r *SearchRepository) Notes(query, ownerID string, limit int) ([]domain.SearchHit, error) {
+	return r.NotesTS(query, domain.SearchTSQuery(query), ownerID, limit)
+}
+
+// NotesTS: Notes con la consulta ya armada.
+func (r *SearchRepository) NotesTS(query, tsq, ownerID string, limit int) ([]domain.SearchHit, error) {
 	out := []domain.SearchHit{}
-	tsq := domain.SearchTSQuery(query)
 	if tsq == "" {
 		return out, nil
 	}
@@ -231,11 +239,15 @@ func (r *SearchRepository) notesLike(query, ownerID string, limit int) ([]domain
 // Si la búsqueda de texto no está montada —las columnas no existen en una base
 // vieja o de pruebas—, se cae a la de siempre por `LIKE` en vez de fallar.
 func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.SearchHit, error) {
+	return r.DocsTS(query, domain.SearchTSQuery(query), orgID, limit)
+}
+
+// DocsTS: Docs con la consulta ya armada.
+func (r *SearchRepository) DocsTS(query, tsq, orgID string, limit int) ([]domain.SearchHit, error) {
 	out := []domain.SearchHit{}
 	if orgID == "" {
 		return out, nil
 	}
-	tsq := domain.SearchTSQuery(query)
 	if tsq == "" {
 		return out, nil
 	}
@@ -546,4 +558,96 @@ func (r *SearchRepository) Misses(orgID string, unscoped bool, since time.Time, 
 	}
 	err := q.Group("lower(query)").Order("count DESC, last_at DESC").Limit(limit).Scan(&out).Error
 	return out, err
+}
+
+// Stems: la raíz de cada palabra según Postgres (`spanish_stem`), sin
+// acentos como el índice. La raíz se saca **con** el acento y se le quita
+// después: sin él, el lematizador no reconoce el sufijo («publicacion» se
+// queda igual, «publicación» da «public»; medido el 2-nov-2026). Ante
+// cualquier fallo, ninguna: buscar sin raíces es lo de siempre.
+func (r *SearchRepository) Stems(words []string) map[string]string {
+	if len(words) == 0 {
+		return nil
+	}
+	type row struct{ Word, Stem string }
+	var rows []row
+	err := r.db.Raw(`SELECT w AS word, coalesce(unaccent((ts_lexize('spanish_stem', w))[1]), '') AS stem
+		FROM unnest(string_to_array(?, ' ')) AS w`, strings.Join(words, " ")).Scan(&rows).Error
+	if err != nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, x := range rows {
+		if x.Stem != "" {
+			out[x.Word] = x.Stem
+		}
+	}
+	return out
+}
+
+// ByID: lo que se llama así en la organización (una tarea, un espacio,
+// carpeta o lista, una página, una decisión o un incidente), y la nota de
+// quien busca. Para un agente que pega el id que le dio otra herramienta
+// (ver domain.SearchID). Cada fuente con su valla, como el resto.
+func (r *SearchRepository) ByID(id, orgID, userID string) (tasks, notes, docs []domain.SearchHit) {
+	tasks, notes, docs = []domain.SearchHit{}, []domain.SearchHit{}, []domain.SearchHit{}
+	type row struct{ Kind, OwnerKind, OwnerID, Title, Where string }
+	one := func(sql string, args ...any) *row {
+		var rows []row
+		if r.db.Raw(sql, args...).Scan(&rows).Error != nil || len(rows) == 0 {
+			return nil
+		}
+		return &rows[0]
+	}
+	if userID != "" {
+		if n := one(`SELECT title FROM notes WHERE id = ? AND owner_id = ? AND deleted_at IS NULL`, id, userID); n != nil {
+			notes = append(notes, domain.SearchHit{Kind: domain.SearchNote, ID: id, Title: n.Title, Link: "/notes/" + id})
+		}
+	}
+	if orgID == "" {
+		return
+	}
+	if t := one(`SELECT t.title, l.name AS "where" FROM items t JOIN task_lists l ON l.id = t.list_id
+		WHERE t.id = ? AND t.org_id = ? AND t.deleted_at IS NULL`, id, orgID); t != nil {
+		tasks = append(tasks, domain.SearchHit{Kind: domain.SearchTask, ID: id, Title: t.Title, Where: t.Where, Link: "/tasks?task=" + id})
+		return
+	}
+	// Un nodo: su portada.
+	if n := one(`SELECT 'space' AS owner_kind, name AS title, '' AS "where" FROM task_spaces WHERE id = ? AND org_id = ?
+		UNION ALL SELECT 'folder', f.name, s.name FROM task_folders f JOIN task_spaces s ON s.id = f.space_id WHERE f.id = ? AND s.org_id = ?
+		UNION ALL SELECT 'list', l.name, s.name FROM task_lists l JOIN task_spaces s ON s.id = l.space_id WHERE l.id = ? AND s.org_id = ?`,
+		id, orgID, id, orgID, id, orgID); n != nil {
+		docs = append(docs, domain.SearchHit{Kind: domain.SearchDoc, ID: id, Title: n.Title, Where: n.Where,
+			OwnerKind: n.OwnerKind, OwnerID: id, Tab: "overview", Link: "/tasks?doc=" + n.OwnerKind + ":" + id + "&tab=overview"})
+		return
+	}
+	// Lo que cuelga de un documento: una página, una decisión o un incidente.
+	// Una consulta por tabla: una base sin alguna de ellas no tumba las demás.
+	var d *row
+	for _, q := range []string{
+		`SELECT 'page' AS kind, d.owner_kind, d.owner_id, x.title FROM doc_pages x JOIN docs d ON d.id = x.doc_id
+			WHERE x.id = ? AND x.org_id = ? AND x.deleted_at IS NULL`,
+		`SELECT 'decision' AS kind, d.owner_kind, d.owner_id, x.title FROM decisions x JOIN docs d ON d.id = x.doc_id
+			WHERE x.id = ? AND d.org_id = ?`,
+		`SELECT 'incident' AS kind, d.owner_kind, d.owner_id, x.title FROM incidents x JOIN docs d ON d.id = x.doc_id
+			WHERE x.id = ? AND x.org_id = ?`,
+	} {
+		if d = one(q, id, orgID); d != nil {
+			break
+		}
+	}
+	if d != nil {
+		link := "/tasks?doc=" + d.OwnerKind + ":" + d.OwnerID
+		hit := domain.SearchHit{ID: id, Title: d.Title, OwnerKind: d.OwnerKind, OwnerID: d.OwnerID}
+		switch d.Kind {
+		case "page":
+			hit.Kind, hit.PageID, hit.Link = domain.SearchDoc, id, link+"&page="+id
+		case "decision":
+			hit.Kind, hit.Link = domain.SearchDecision, link+"&tab=decisions"
+		default:
+			hit.Kind, hit.Link = domain.SearchIncident, link+"&tab=overview&incident="+id
+		}
+		docs = append(docs, hit)
+	}
+	return
 }

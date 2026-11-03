@@ -24,8 +24,17 @@ servidor aunque el cuerpo no lo diga), el mapa (`incidents` de cada nodo),
 del servidor. Hooks: la sesión enseña las trampas abiertas, y `cac-prompt`
 inyecta los incidentes de lo que nombra el prompt. Además, el lector de
 `search_misses` (sólo admin) para la revisión del 4-nov. Skill cac-work
-**v21**: `remember as:"trap"` deja de anunciarse. Falta: migrar los 16 de la
-283 y las Trampas (con el sí de jose) y la release.
+**v21**: `remember as:"trap"` deja de anunciarse. Migrados los 16 de la 283 y
+las Trampas (20 incidentes, 2-nov). Falta la release.
+
+**2-nov, en `main`: la búsqueda de un agente, sin embeddings**
+(command-and-control-294, decisión 0069081d, que sustituye a la 82f9678a). La
+revisión de `search_misses` no encontró ningún fallo por sinónimos. Lo que
+fallaba de verdad: un **id pegado** ahora encuentra lo que nombra; cada palabra
+larga se busca también por su **raíz** (`spanish_stem`, sólo en la consulta:
+«publicación» encuentra «publicar»); y si todas las palabras juntas no dan
+nada, sale lo que casa con **alguna**, marcado `partial` (el MCP lo avisa) y
+guardado también como búsqueda fallida.
 
 **31-oct (noche), en `main`: un agente pide aplicar y cac sigue el protocolo**
 (command-and-control-283, decisión 4d28f4ab). Cada playbook declara su riesgo

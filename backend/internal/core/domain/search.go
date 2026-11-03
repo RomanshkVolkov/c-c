@@ -96,6 +96,10 @@ type SearchResults struct {
 	// y la de documentación es la que va a cambiar si algún día hay permisos por
 	// documento.
 	Docs []SearchHit `json:"docs"`
+	// Partial: nada casaba con todas las palabras y esto casa con **alguna**
+	// (ver SearchTSQueryWith). Para que quien lo lee —sobre todo un agente—
+	// no lo tome por la respuesta a lo que preguntó.
+	Partial bool `json:"partial,omitempty"`
 }
 
 // SearchTSQuery convierte lo que escribe alguien en una consulta de texto
@@ -125,6 +129,24 @@ type SearchResults struct {
 // Entera, `to_tsquery` la convierte en la frase exacta: ni `proteus-1250` ni
 // «125 vistas».
 func SearchTSQuery(q string) string {
+	return SearchTSQueryWith(q, nil, false)
+}
+
+// SearchTSQueryWith es SearchTSQuery con dos ayudas para lo que busca un
+// agente, que escribe frases y no palabras clave (command-and-control-294):
+//
+//   - `stems`: la raíz de cada palabra (de `SearchStemWords`, calculada por
+//     Postgres con `spanish_stem`). Una palabra con raíz casa por cualquiera de
+//     las dos, ambas por prefijo: «publicación» encuentra «publicar» y
+//     «publicado». El índice no lematiza (`cac_simple`) y no se toca: la raíz
+//     va sólo en la consulta, así que no hay nada que reindexar. Sin esto,
+//     «riesgos publicación» no encontraba nada y «riesgos publicar» tres
+//     tareas (`search_misses`, 2-nov-2026).
+//   - `anyWord`: con alguna de las palabras en vez de con todas. Es la segunda
+//     vuelta cuando todas a la vez no dan nada: «allowlist staff_allowlist
+//     aprobar briefing kyle» no daba nada y «kyle» solo, dieciséis. Ordenado
+//     por relevancia, lo que casa con más palabras sube.
+func SearchTSQueryWith(q string, stems map[string]string, anyWord bool) string {
 	terms := searchTerms(q)
 	out := make([]string, len(terms))
 	for i, t := range terms {
@@ -132,8 +154,76 @@ func SearchTSQuery(q string) string {
 		if t.prefix {
 			out[i] += ":*"
 		}
+		if st, ok := stems[t.word]; ok && t.prefix && validStem(t.word, st) {
+			out[i] = "(" + out[i] + " | " + st + ":*)"
+		}
+	}
+	if anyWord {
+		return strings.Join(out, " | ")
 	}
 	return strings.Join(out, " & ")
+}
+
+// MinStemWord: desde cuántas letras una palabra se busca también por su raíz.
+// MinStem: la raíz más corta que se usa. «casa» da «cas», que por prefijo
+// casaría con «caso» y «castillo»: una raíz corta trae más ruido que ayuda.
+const (
+	MinStemWord = 5
+	MinStem     = 4
+)
+
+// SearchStemWords: las palabras de la consulta que se buscan también por su
+// raíz. Ni las referencias ni las cortas.
+func SearchStemWords(q string) []string {
+	var out []string
+	for _, t := range searchTerms(q) {
+		if !t.ref && t.prefix && len([]rune(t.word)) >= MinStemWord {
+			out = append(out, t.word)
+		}
+	}
+	return out
+}
+
+// validStem: una raíz que aporta algo y que `to_tsquery` no puede leer mal:
+// sólo letras y dígitos, no más corta que MinStem y distinta de la palabra.
+func validStem(word, stem string) bool {
+	if len([]rune(stem)) < MinStem || stem == word {
+		return false
+	}
+	for _, r := range stem {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
+}
+
+// SearchWordCount: cuántas palabras tiene la consulta, contadas como las
+// cuenta la búsqueda. Con una sola no hay segunda vuelta «con alguna».
+func SearchWordCount(q string) int { return len(searchTerms(q)) }
+
+// SearchID: si la consulta es sólo un id (un uuid), en minúsculas. Un agente
+// pega el id que le dio otra herramienta (`1b0add6d-…`), y el texto completo
+// lo parte en trozos que no casan con nada (`search_misses`, 2-nov-2026): se
+// busca la cosa que se llama así.
+func SearchID(q string) (string, bool) {
+	q = strings.ToLower(strings.TrimSpace(q))
+	if len(q) != 36 {
+		return "", false
+	}
+	for i, c := range q {
+		switch i {
+		case 8, 13, 18, 23:
+			if c != '-' {
+				return "", false
+			}
+		default:
+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+				return "", false
+			}
+		}
+	}
+	return q, true
 }
 
 // searchTerm: una palabra de la consulta, y si se busca por prefijo. `ref`:
