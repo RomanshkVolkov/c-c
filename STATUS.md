@@ -13,6 +13,20 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**2-nov (noche), en `main`: la tanda antes de la release** (295–299, un
+commit por pieza; el backend ya está desplegado).
+- **Releases** (295, decisión «marca y avisa»): el evento `release` guarda
+  sus commits; cada commit trae `releasedIn`, lo que salió entero lleva
+  `shipped` en el mapa y en los incidentes, la tarea recibe una línea, y la
+  sesión arranca con «Ya salieron: ciérralas». cac-work **v22**. **Falta que
+  jose suscriba el evento Release en la GitHub App.**
+- **`cac-edit`** (296): al editar un fichero, los incidentes cuya prueba
+  guardián vive ahí. Los `guards` viajan en el listado.
+- **Subtareas** (297): la búsqueda dice de qué tarea cuelga una; «Mi
+  trabajo» trae las de una persona con su madre.
+- **kubernetes** (298): su consola y la pestaña Provisioning (sale con la release).
+- **`host-mismatch`** (299): el ensayo avisa si `public_ip` ≠ host.
+
 **2-nov, en `main`: lo que mordió se registra y se encuentra al tocarlo**
 (command-and-control-289). Un **incidente** es un registro, como una
 decisión: cuelga de un nodo y se ata a **servidores** y **áreas**, con los
