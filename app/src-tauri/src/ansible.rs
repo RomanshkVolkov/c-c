@@ -1954,6 +1954,50 @@ playbooks:
         assert!(wait >= 1800, "el verify espera {wait}s al clúster; el primer arranque midió 19 min");
     }
 
+    // Valkey, el bus de cac-service. En pixel-vps era el chart de Bitnami con
+    // Sentinel (que dejó de publicar imágenes gratis, y en un nodo Sentinel no
+    // protege de nada). Aquí: su propio playbook con su secreto, la imagen
+    // oficial fijada por digest, contraseña por un config montado (no en los
+    // argumentos, que se ven en `ps`), AOF en un PVC, sin desalojo, y un
+    // verify que exige que sin contraseña se niegue. Roturas que atrapa: meter
+    // Valkey en `k8s`; una imagen por etiqueta; `--requirepass` en los
+    // argumentos; `command` que se salta el entrypoint (y tini); un secreto
+    // sin no_log; el AOF apagado; un verify que no prueba la negativa.
+    #[test]
+    fn valkey_is_its_own_playbook_with_auth_and_aof() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let m = parse_manifest(&std::fs::read_to_string(root.join(MANIFEST_FILE)).unwrap()).unwrap();
+        let k8s = m.playbooks.iter().find(|p| p.id == "k8s").unwrap();
+        assert!(!k8s.vars.iter().any(|v| v.name.starts_with("valkey") || v.name == "install_valkey"), "Valkey vive dentro de k8s");
+        let valkey = m.playbooks.iter().find(|p| p.id == "valkey").expect("sin playbook valkey");
+        assert_eq!((valkey.risk.as_deref(), valkey.verify.as_deref()), (Some(RISK_CHANGE), Some("valkey-verify")));
+        assert!(valkey.vars.iter().any(|v| v.secret && v.from.as_deref() == Some("VALKEY_PASSWORD")), "valkey no declara su contraseña");
+        let image = valkey.vars.iter().find(|v| v.name == "valkey_image").and_then(|v| v.default.as_ref()).and_then(|d| d.as_str()).expect("sin valkey_image");
+        assert!(image.starts_with("valkey/valkey:") && image.contains("@sha256:"), "Valkey no es la imagen oficial fijada por digest: {image}");
+
+        let t = std::fs::read_to_string(root.join("roles/valkey/templates/valkey.yaml.j2")).unwrap();
+        let docs: Vec<serde_yaml::Value> = serde_yaml::Deserializer::from_str(&t).map(|d| serde_yaml::Value::deserialize(d).unwrap()).collect();
+        let sts = docs.iter().find(|d| d["kind"] == "StatefulSet").expect("sin StatefulSet");
+        let c = &sts["spec"]["template"]["spec"]["containers"][0];
+        assert!(c.get("command").is_none(), "`command` se salta el entrypoint de la imagen");
+        let args: Vec<&str> = c["args"].as_sequence().unwrap().iter().filter_map(|a| a.as_str()).collect();
+        assert!(!args.iter().any(|a| a.contains("requirepass")), "la contraseña va en los argumentos");
+        assert!(args.windows(2).any(|w| w == ["--appendonly", "yes"]), "sin AOF");
+        assert!(args.windows(2).any(|w| w == ["--maxmemory-policy", "noeviction"]), "el bus desaloja claves");
+        assert!(args.contains(&"/etc/valkey/valkey.conf"), "el servidor no lee el config con la contraseña");
+        let claim = &sts["spec"]["volumeClaimTemplates"][0]["spec"];
+        assert_eq!(claim["storageClassName"].as_str(), Some("local-path"), "el AOF no tiene volumen");
+
+        let tasks = ansible_tasks(&std::fs::read_to_string(root.join("roles/valkey/tasks/main.yml")).unwrap());
+        let secret = tasks.iter().find(|t| t.get("ansible.builtin.shell").and_then(|s| s.get("stdin")).is_some()).expect("la contraseña no entra por stdin");
+        assert_eq!(secret["no_log"].as_bool(), Some(true), "la contraseña sale en el log");
+        let stdin = secret["ansible.builtin.shell"]["stdin"].as_str().unwrap();
+        assert!(stdin.contains("valkey-password:") && stdin.contains("valkey.conf:"), "el Secret no trae la clave que copia cac-valkey o el config");
+
+        let verify = std::fs::read_to_string(root.join("playbooks/valkey-verify.yml")).unwrap();
+        assert!(verify.contains("NOAUTH") && verify.contains("PONG") && verify.contains("appendonly"), "el verify no prueba la negativa, el PONG o el AOF");
+    }
+
     // TURN y los puertos UDP de LiveKit son opcionales: un servidor sin voz
     // no abre nada. Y la verificación espera a TODOS los certificados, no
     // sólo al primero. Roturas que atrapa: el listener turn-tls sin su

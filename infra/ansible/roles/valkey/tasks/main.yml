@@ -1,0 +1,40 @@
+---
+- name: Namespace de datos
+  ansible.builtin.shell:
+    cmd: kubectl create namespace data --dry-run=client -o yaml | kubectl apply --server-side --force-conflicts -f -
+  register: data_ns
+  changed_when: "'serverside-applied' in data_ns.stdout and 'unchanged' not in data_ns.stdout"
+
+# La contraseña entra por stdin y del lado del servidor, como los secretos de
+# cnpg: ni en la línea de comandos ni en la anotación last-applied. Va dos
+# veces: `valkey-password` es la que copia `cac-valkey` (backend/k8s/
+# 1-secrets.yaml) y `valkey.conf` la que lee el servidor, para que no viaje
+# en los argumentos del proceso (`--requirepass` se ve en `ps`).
+- name: Secreto de Valkey
+  ansible.builtin.shell:
+    cmd: kubectl apply --server-side --force-conflicts -f -
+    stdin: |
+      apiVersion: v1
+      kind: Secret
+      metadata: {name: valkey-auth, namespace: data}
+      type: Opaque
+      stringData:
+        valkey-password: "{{ valkey_password }}"
+        valkey.conf: |
+          requirepass "{{ valkey_password }}"
+    stdin_add_newline: false
+  register: valkey_secret
+  changed_when: "'serverside-applied' in valkey_secret.stdout and 'unchanged' not in valkey_secret.stdout"
+  no_log: true
+
+- name: Manifiesto de Valkey
+  ansible.builtin.template:
+    src: valkey.yaml.j2
+    dest: /etc/cac/valkey.yaml
+    mode: "0600"
+
+- name: Aplicar Valkey
+  ansible.builtin.command: kubectl apply --server-side --force-conflicts -f /etc/cac/valkey.yaml
+  register: valkey_apply
+  changed_when: "'serverside-applied' in valkey_apply.stdout and 'unchanged' not in valkey_apply.stdout"
+  when: not ansible_check_mode

@@ -1,0 +1,79 @@
+# {{ ansible_managed }}
+# El bus de eventos de cac-service: valkey.data.svc.cluster.local:6379.
+apiVersion: v1
+kind: Service
+metadata: {name: valkey, namespace: data, labels: {app: valkey}}
+spec:
+  selector: {app: valkey}
+  ports: [{name: valkey, port: 6379, targetPort: 6379}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: valkey, namespace: data, labels: {app: valkey}}
+spec:
+  serviceName: valkey
+  replicas: 1
+  selector: {matchLabels: {app: valkey}}
+  template:
+    metadata:
+      labels: {app: valkey}
+      annotations:
+        # Al rotar la contraseña en 1Password y volver a correr, el pod se
+        # recrea y lee la nueva: el config se lee sólo al arrancar.
+        cac/password-version: "{{ valkey_password | hash('sha256') | truncate(16, True, '') }}"
+    spec:
+      securityContext:
+        # El usuario `valkey` de la imagen oficial.
+        runAsUser: 999
+        runAsGroup: 999
+        runAsNonRoot: true
+        fsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: valkey
+          image: "{{ valkey_image }}"
+          # Sólo args: `command` reemplazaría el entrypoint de la imagen y con
+          # él tini, que recoge a los hijos (el fork del AOF) y pasa SIGTERM.
+          args:
+            - valkey-server
+            - /etc/valkey/valkey.conf
+            - --dir
+            - /data
+            - --appendonly
+            - "yes"
+            - --maxmemory
+            - "{{ valkey_maxmemory }}"
+            - --maxmemory-policy
+            - noeviction
+          env:
+            # valkey-cli la toma de aquí: las sondas y el verify no la escriben.
+            - name: REDISCLI_AUTH
+              valueFrom: {secretKeyRef: {name: valkey-auth, key: valkey-password}}
+          ports: [{name: valkey, containerPort: 6379}]
+          readinessProbe:
+            exec: {command: [sh, -c, 'valkey-cli ping | grep -q PONG']}
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: 6379}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 768Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: config, mountPath: /etc/valkey, readOnly: true}
+      volumes:
+        - name: config
+          secret:
+            secretName: valkey-auth
+            items: [{key: valkey.conf, path: valkey.conf}]
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources: {requests: {storage: "{{ valkey_storage_size }}"}}

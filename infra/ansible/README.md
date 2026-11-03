@@ -13,7 +13,9 @@ Playbooks para dejar un servidor listo desde cero, por etapas:
 3. **Lo que trae secretos propios**, cada uno su playbook encima de k8s:
    **Postgres con CloudNativePG** (`cnpg`: operador + plugin barman-cloud, un
    clúster `postgres` de una instancia en `data`, WAL archivado y backup
-   diario a S3; ver `infra/terraform/cnpg-backups`).
+   diario a S3; ver `infra/terraform/cnpg-backups`) y **Valkey** (`valkey`:
+   el bus de cac-service, imagen oficial fijada por digest, contraseña desde
+   1Password, AOF en un PVC, sin Sentinel).
 
 Los dos emiten un certificado wildcard `*.<base_domain>` por reto DNS en
 Cloudflare, y dejan un `whoami.<base_domain>` como prueba de humo. En

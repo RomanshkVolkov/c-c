@@ -260,6 +260,42 @@ playbooks:
     become: true
     become_password_from: OPS_PASSWORD
 
+  - id: valkey
+    file: playbooks/valkey-site.yml
+    name: Valkey
+    description: >-
+      Encima de k8s: el bus de eventos de cac-service. Un StatefulSet `valkey`
+      en el namespace data con la imagen oficial, contraseña, AOF en un PVC y
+      sin Sentinel. Idempotente. Trae su propio secreto.
+    hosts: k8s_control_plane
+    risk: change
+    verify: valkey-verify
+    # Lo que guarda es un bus: quitarlo es borrar el StatefulSet y su PVC, y
+    # eso se decide a mano.
+    rollback: manual
+    become: true
+    become_password_from: OPS_PASSWORD
+    vars:
+      # Fijada por digest (índice multiarquitectura de 9.0.7, 27-oct-2026).
+      - { name: valkey_image, description: Imagen oficial de Valkey fijada por digest., default: "valkey/valkey:9.0.7@sha256:7e1deda01b64ece3167d370ab5be3452d29734feec22cbcbc69b3a64f6859d6d" }
+      - { name: valkey_storage_size, default: "2Gi" }
+      # Sin desalojo: un bus que tira claves por memoria pierde eventos sin
+      # avisar; mejor que falle la escritura y se vea.
+      - { name: valkey_maxmemory, description: Tope de memoria de Valkey (noeviction)., default: "512mb" }
+      - name: valkey_password
+        description: La contraseña de Valkey (generada en 1Password).
+        secret: true
+        from: VALKEY_PASSWORD
+
+  - id: valkey-verify
+    file: playbooks/valkey-verify.yml
+    name: Verificar Valkey
+    description: Listo, pide contraseña, contesta PONG con ella y escribe el AOF. No cambia nada.
+    hosts: k8s_control_plane
+    risk: read
+    become: true
+    become_password_from: OPS_PASSWORD
+
   - id: k8s-teardown
     file: playbooks/k8s-teardown.yml
     name: Desmontar Kubernetes

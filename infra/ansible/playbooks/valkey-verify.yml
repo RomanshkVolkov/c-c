@@ -1,0 +1,47 @@
+---
+# Comprueba que Valkey está arriba, que pide contraseña, que contesta con ella
+# y que escribe el AOF en su volumen. No cambia nada.
+- name: Verificar Valkey
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: false
+  tasks:
+    - name: StatefulSet listo
+      ansible.builtin.command: kubectl -n data rollout status sts/valkey --timeout=600s
+      changed_when: false
+      check_mode: false
+
+    # Sin contraseña tiene que negarse: un Valkey abierto en la red de pods es
+    # un bus que cualquier pod lee y escribe.
+    - name: Sin contraseña no contesta
+      ansible.builtin.command: kubectl -n data exec valkey-0 -c valkey -- env -u REDISCLI_AUTH valkey-cli ping
+      register: anon
+      changed_when: false
+      check_mode: false
+      failed_when: "'NOAUTH' not in (anon.stdout ~ anon.stderr)"
+
+    # REDISCLI_AUTH lo pone el propio contenedor desde el Secret: la
+    # contraseña no pasa por aquí.
+    - name: Con contraseña contesta PONG
+      ansible.builtin.command: kubectl -n data exec valkey-0 -c valkey -- valkey-cli ping
+      register: ping
+      changed_when: false
+      check_mode: false
+      failed_when: ping.stdout != "PONG"
+
+    - name: Escribe el AOF
+      ansible.builtin.command: kubectl -n data exec valkey-0 -c valkey -- valkey-cli config get appendonly
+      register: aof
+      changed_when: false
+      check_mode: false
+      failed_when: aof.stdout_lines[-1] | default('') != "yes"
+
+    - name: Estado
+      ansible.builtin.command: kubectl -n data get sts,pod,pvc,svc -l app=valkey
+      register: state
+      changed_when: false
+      check_mode: false
+
+    - name: Resultado
+      ansible.builtin.debug:
+        var: state.stdout_lines

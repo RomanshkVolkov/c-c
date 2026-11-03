@@ -1,0 +1,12 @@
+---
+# Valkey para el bus de eventos de cac-service, encima de un clúster hecho
+# por k8s-site: un StatefulSet `valkey` en el namespace `data` con la imagen
+# oficial, contraseña, AOF en un PVC, y sin Sentinel (en un nodo no protege de
+# nada; cac-service reconecta por nombre). Sin Bitnami, que en pixel-vps dejó
+# de publicar imágenes gratis. Idempotente. Playbook aparte de `k8s` porque
+# trae su secreto (la contraseña).
+- name: Valkey
+  hosts: k8s_control_plane
+  become: true
+  roles:
+    - {role: valkey, tags: [valkey]}
