@@ -216,6 +216,8 @@ export interface TaskGitLink {
   via: "text" | "branch" | "manual";
   mergedAt?: string;
   occurredAt: string;
+  /** Commit: la release de su repo en la que salió, si cac la vio. */
+  releasedIn?: { tag: string; at: string; url?: string };
 }
 
 export interface TaskGitLinks {

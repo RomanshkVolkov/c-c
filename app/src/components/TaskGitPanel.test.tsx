@@ -91,6 +91,25 @@ describe("el panel Desarrollo", () => {
     expect(screen.getByText("abcdef1")).toBeTruthy();
   });
 
+  // command-and-control-295: lo que hay que mirar para cerrar la tarea.
+  it("un commit que salió en una release dice en cuál, y uno que no, nada", () => {
+    render(
+      <TaskGitPanel
+        git={git({
+          summary: { branches: 0, prs: 0, commits: 2 },
+          commits: [
+            link({ kind: "commit", key: "aaaaaaa111", title: "salió", releasedIn: { tag: "v1.9.1", at: "2026-11-03T00:00:00Z" } }),
+            link({ kind: "commit", key: "bbbbbbb222", title: "no salió" }),
+          ],
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /2 commits/ }));
+    const chip = screen.getByText("v1.9.1");
+    expect(chip.getAttribute("title")).toBe("Shipped in v1.9.1");
+    expect(screen.getAllByText(/^v\d/)).toHaveLength(1);
+  });
+
   it("una rama borrada lo dice", () => {
     render(
       <TaskGitPanel

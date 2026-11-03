@@ -220,6 +220,15 @@ export default function TaskGitPanel({
                     {c.authorLogin && (
                       <span className="shrink-0 text-muted-foreground">@{c.authorLogin}</span>
                     )}
+                    {/* Ya salió en una release: lo que hay que mirar para cerrar la tarea. */}
+                    {c.releasedIn && (
+                      <span
+                        title={t("work:task.git.releasedIn", { tag: c.releasedIn.tag })}
+                        className="shrink-0 rounded bg-muted px-1 font-mono text-[10px] text-muted-foreground"
+                      >
+                        {c.releasedIn.tag}
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}

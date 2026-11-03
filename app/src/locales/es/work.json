@@ -194,7 +194,8 @@
       "linked": "PR enlazada",
       "errLink": "No se pudo enlazar la PR",
       "prUrl": "URL de la PR",
-      "viaManual": "Enlazada a mano"
+      "viaManual": "Enlazada a mano",
+      "releasedIn": "Salió en {{tag}}"
     },
     "handoff": "Dónde quedó",
     "handoffHint": "Qué está hecho, el siguiente paso y cómo comprobar si ya salió. Se reemplaza entero.",

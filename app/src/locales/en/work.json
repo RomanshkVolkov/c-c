@@ -194,7 +194,8 @@
       "linked": "PR linked",
       "errLink": "Couldn't link the PR",
       "prUrl": "PR URL",
-      "viaManual": "Linked by hand"
+      "viaManual": "Linked by hand",
+      "releasedIn": "Shipped in {{tag}}"
     },
     "handoff": "Where it was left",
     "handoffHint": "What is done, the next step and how to check it shipped. It replaces the previous one.",
