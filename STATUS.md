@@ -32,7 +32,16 @@ de cac» del espacio). Lo que pixel-vps enseñó, corregido en `infra/ansible`:
   [gstd.guz-studio.dev, guz-studio.dev]`. Decisiones: S3 para CNPG, el
   estándar del runner dwit-kb replicado para G Studio, y la definición del
   runner en `g-studio-labs/actions-runner`.
-- Pendiente: aplicar en gstd (petición con ensayo, aprueba jose), y C–H.
+- **C** (303, `ff815c9`): Postgres como playbook propio `cnpg` (operador
+  1.30.1, plugin barman-cloud, una instancia en `data`, WAL y backup diario a
+  S3 con verify) y `infra/terraform/cnpg-backups`. Sin aplicar: faltan el
+  bucket y los secretos.
+- **309** (`b573cc8` backend desplegado, `1e938fd` app sin release): una
+  ejecución que muere antes de arrancar Ansible (1Password no contesta) ya no
+  gasta la autorización: la petición vuelve a aprobada; y `op read` insiste
+  tres veces si 1Password rechaza la conexión.
+- Pendiente: aplicar A y B en gstd (petición `119db4a8` con ensayo limpio,
+  aprueba jose), y D–H.
 
 **2-nov (noche), en `main`: la tanda antes de la release** (295–299, un
 commit por pieza; el backend ya está desplegado).
