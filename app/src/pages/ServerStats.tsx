@@ -1,6 +1,6 @@
 import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
-import { useServerContext } from "@/pages/servers/ServerLayout";
+import { useSwarmContext } from "@/pages/servers/ServerLayout";
 import {
   Activity,
   AlertCircle,
@@ -151,7 +151,7 @@ function timeSince(ts: number | null): string {
 export default function ServerStats() {
   const { t } = useT();
   // Del layout: el servidor sale de la URL, y los nodos son los que ya leyó.
-  const { server, swarm } = useServerContext();
+  const { server, swarm } = useSwarmContext();
   const nodes = swarm.nodes;
 
   const entry = useStatsStore((s) =>

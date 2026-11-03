@@ -6,7 +6,7 @@ import ServiceSecretRefs from "@/components/servers/ServiceSecretRefs";
 import Picker from "@/components/ui/picker";
 import { useT } from "@/lib/i18n";
 import { goInOrg } from "@/lib/ir-en-org";
-import { useServerContext } from "@/pages/servers/ServerLayout";
+import { useSwarmContext } from "@/pages/servers/ServerLayout";
 
 /**
  * «Despliegue»: todo lo de cómo despliega cac un servicio, en una página y en
@@ -24,7 +24,7 @@ import { useServerContext } from "@/pages/servers/ServerLayout";
 export default function ServiceDeploy() {
   const { t } = useT();
   const navigate = useNavigate();
-  const { server, swarm } = useServerContext();
+  const { server, swarm } = useSwarmContext();
   const [params, setParams] = useSearchParams();
   const service = swarm.services.find((s) => s.name === params.get("service")) ?? null;
 

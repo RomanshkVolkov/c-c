@@ -20,7 +20,7 @@ import { formatBytes } from "@/lib/utils";
 import { isTauri } from "@/lib/platform";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useServerContext } from "@/pages/servers/ServerLayout";
+import { useSwarmContext } from "@/pages/servers/ServerLayout";
 import { useBackupsStore } from "@/store/backups.store";
 import type { Backup, BackupStatus, BackupTarget, BackupTargetPayload } from "@/types/backups";
 
@@ -45,7 +45,7 @@ const EMPTY_HISTORY: Backup[] = [];
 
 export default function ServerBackups() {
   const { t } = useT();
-  const { server, swarm } = useServerContext();
+  const { server, swarm } = useSwarmContext();
   const confirm = useConfirm();
   const store = useBackupsStore;
   const status = useBackupsStore((s) => s.status[server.id]);

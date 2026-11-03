@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { SwarmNode } from "@/types/swarm";
-import { useServerContext } from "./ServerLayout";
+import { useSwarmContext } from "./ServerLayout";
 
 function NodesTab({ nodes }: { nodes: SwarmNode[] }) {
   const { t } = useT();
@@ -64,7 +64,7 @@ function NodesTab({ nodes }: { nodes: SwarmNode[] }) {
 
 /** Los nodos del swarm. */
 export default function ServerNodes() {
-  const { swarm } = useServerContext();
+  const { swarm } = useSwarmContext();
   return (
     <Card>
       <CardContent className="overflow-auto pt-4">

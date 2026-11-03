@@ -16,12 +16,13 @@ vi.mock("@tauri-apps/api/event", () => ({
 vi.mock("@/lib/api", () => ({ api: { get, post, patch: vi.fn(), delete: vi.fn() } }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => confirmar }));
 vi.mock("sonner", () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() } }));
-vi.mock("@/pages/servers/ServerLayout", () => ({
-  useServerContext: () => ({
+vi.mock("@/pages/servers/ServerLayout", () => {
+  const ctx = () => ({
     server: { id: "srv-1" },
     swarm: { services: [{ id: "s1", name: "sqlserver-prod_db", image: "mcr.microsoft.com/mssql/server:latest" }] },
-  }),
-}));
+  });
+  return { useServerContext: ctx, useSwarmContext: ctx };
+});
 
 import ServerBackups from "@/pages/servers/ServerBackups";
 import { useBackupsStore } from "@/store/backups.store";

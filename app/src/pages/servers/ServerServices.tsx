@@ -19,7 +19,7 @@ import type { SwarmService } from "@/types/swarm";
 import { useAuthStore } from "@/store/auth.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { roleAtLeast } from "@/types/organization";
-import { useServerContext } from "./ServerLayout";
+import { useSwarmContext } from "./ServerLayout";
 
 function ReplicasBadge({ replicas }: { replicas: SwarmService["replicas"] }) {
   const { running, desired } = replicas;
@@ -413,7 +413,7 @@ function ServicesTable({
 
 /** La pestaña de servicios de un swarm: cada uno con sus logs, reinicio, deploy, shell y secrets. */
 export default function ServerServices() {
-  const { server, swarm } = useServerContext();
+  const { server, swarm } = useSwarmContext();
   const navigate = useNavigate();
   const abrirTerminal = useTerminals((s) => s.abrir);
   const [selectedService, setSelectedService] = useState<SwarmService | null>(null);

@@ -39,7 +39,10 @@ const WEB = import.meta.env.VITE_TARGET === "web";
 const NotOnWeb = () => null;
 const Dashboard = WEB ? NotOnWeb : lazy(() => import("@/pages/Dashboard"));
 const ServerLayout = WEB ? NotOnWeb : lazy(() => import("@/pages/servers/ServerLayout"));
-const ServerOverview = WEB ? NotOnWeb : lazy(() => import("@/pages/servers/ServerOverview"));
+// El resumen de un servidor: el overview de swarm o la consola de kubernetes.
+const ServerIndex = WEB
+  ? NotOnWeb
+  : lazy(() => import("@/pages/servers/ServerLayout").then((m) => ({ default: m.ServerIndex })));
 const ServerServices = WEB ? NotOnWeb : lazy(() => import("@/pages/servers/ServerServices"));
 const ServerNodes = WEB ? NotOnWeb : lazy(() => import("@/pages/servers/ServerNodes"));
 const ServerProvision = WEB ? NotOnWeb : lazy(() => import("@/pages/servers/ServerProvision"));
@@ -121,7 +124,7 @@ export default function App() {
           <Route path="/notes/:id" element={<Notes />} />
           {!isWebBuild && (
           <Route path="/servers/:id" element={<ServerLayout />}>
-            <Route index element={<ServerOverview />} />
+            <Route index element={<ServerIndex />} />
             <Route path="services" element={<ServerServices />} />
             <Route path="nodes" element={<ServerNodes />} />
             <Route path="stats" element={<ServerStats />} />

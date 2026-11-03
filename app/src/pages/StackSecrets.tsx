@@ -4,7 +4,7 @@ import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useState, useEffect, useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useServerContext } from "@/pages/servers/ServerLayout";
+import { useSwarmContext } from "@/pages/servers/ServerLayout";
 import { GITHUB_PAT_KEY, inferOwnerRepo } from "@/lib/github-repo";
 import {
   KeyRound,
@@ -54,7 +54,7 @@ export default function StackSecrets() {
   const { t } = useT();
   // El servidor, del layout; el servicio, de `?service=`. Antes los dos
   // llegaban por el `state` del router y una recarga devolvía al panel.
-  const { server, swarm } = useServerContext();
+  const { server, swarm } = useSwarmContext();
   const [params, setParams] = useSearchParams();
   const services = swarm.services;
   const PERSONAL_ACCESS_TOKEN_KEY = GITHUB_PAT_KEY;

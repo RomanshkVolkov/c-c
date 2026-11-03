@@ -27,7 +27,12 @@ import type { APIResponse } from "@/types/auth";
 import type { Server } from "@/types/server";
 import type { K8sHealth, K8sRoutesResponse } from "@/types/k8s";
 
-export default function K8sHub({ server }: { server: Server }) {
+/**
+ * La consola de un kubernetes. `embedded`: como resumen dentro de las
+ * pestañas del servidor (ServerLayout), sin su propia cabecera; el botón de
+ * refrescar es del clúster y se queda en el cuerpo.
+ */
+export default function K8sHub({ server, embedded = false }: { server: Server; embedded?: boolean }) {
   const { t } = useT();
   const navigate = useNavigate();
   const orgs = useOrgsStore((s) => s.orgs);
@@ -72,6 +77,13 @@ export default function K8sHub({ server }: { server: Server }) {
 
   return (
     <div className="h-full bg-background flex flex-col overflow-hidden">
+      {embedded ? (
+        <div className="shrink-0 flex justify-end px-6 pt-3">
+          <Button variant="outline" size="sm" onClick={load} disabled={loading} aria-label={t("common:servers.refresh")}>
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          </Button>
+        </div>
+      ) : (
       <header className="shrink-0 border-b px-6 py-3 flex items-center gap-3">
         <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
           <ArrowLeft className="h-4 w-4" />
@@ -83,6 +95,7 @@ export default function K8sHub({ server }: { server: Server }) {
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
         </Button>
       </header>
+      )}
 
       <div className="min-h-0 flex-1 overflow-auto p-6 space-y-6 max-w-5xl mx-auto w-full">
         {error && (

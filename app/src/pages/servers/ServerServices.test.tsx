@@ -8,15 +8,16 @@ import { MemoryRouter } from "react-router-dom";
  * deploy. Los botones no salen, en vez de salir y fallar. Mutantes: enseñarlos
  * a todos; mirar el rol de otra org.
  */
-vi.mock("./ServerLayout", () => ({
-  useServerContext: () => ({
+vi.mock("./ServerLayout", () => {
+  const ctx = () => ({
     server: { id: "srv-1", orgId: "org-1", host: "10.0.0.1", agentPort: 9090 },
     swarm: {
       loading: false,
       services: [{ id: "s1", name: "api", image: "x:1", stack: "a", replicas: { running: 1, desired: 1 }, updatedAt: "2026-10-01T00:00:00Z" }],
     },
-  }),
-}));
+  });
+  return { useServerContext: ctx, useSwarmContext: ctx };
+});
 vi.mock("@/components/servers/DeployDialog", () => ({ default: () => null }));
 
 const { default: ServerServices } = await import("./ServerServices");

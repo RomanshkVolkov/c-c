@@ -1,8 +1,6 @@
-import TabIndicator from "@/components/ui/tab-indicator";
-import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { RowsSkeleton } from "@/components/ui/skeletons";
 import { useEffect, useRef } from "react";
-import { NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { Navigate, Outlet, useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { ArrowLeft, RefreshCw, SquareTerminal } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { enterOrg } from "@/lib/ir-en-org";
@@ -15,6 +13,8 @@ import TerminalPanel from "@/components/terminal/TerminalPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import K8sHub from "@/pages/K8sHub";
+import ServerOverview from "@/pages/servers/ServerOverview";
+import ServerTabs from "@/components/servers/ServerTabs";
 import type { Server } from "@/types/server";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> = {
@@ -24,21 +24,43 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> = 
   error: "destructive",
 };
 
-/** Lo que el layout comparte con cada pestaña. */
+/**
+ * Lo que el layout comparte con cada pestaña. `swarm` sólo en un servidor de
+ * swarm: en uno de kubernetes no hay agente al que preguntarle.
+ */
 export interface ServerContext {
   server: Server;
   refreshServer: () => Promise<void>;
-  swarm: ReturnType<typeof useSwarm>;
+  swarm?: ReturnType<typeof useSwarm>;
 }
 
 export const useServerContext = () => useOutletContext<ServerContext>();
 
 /**
+ * El contexto de una pestaña que sólo existe en swarm (servicios, nodos…).
+ * Montada en un kubernetes es un error de programación, y lo dice.
+ */
+export function useSwarmContext(): ServerContext & { swarm: ReturnType<typeof useSwarm> } {
+  const ctx = useServerContext();
+  if (!ctx.swarm) throw new Error("a swarm tab mounted on a server that is not swarm");
+  return ctx as ServerContext & { swarm: ReturnType<typeof useSwarm> };
+}
+
+/**
+ * El resumen de un servidor: la consola de kubernetes en uno de kubernetes,
+ * el overview de swarm en los demás.
+ */
+export function ServerIndex() {
+  const { server } = useServerContext();
+  return server.type === "kubernetes" ? <K8sHub server={server} embedded /> : <ServerOverview />;
+}
+
+/**
  * Un servidor: la cabecera, las pestañas y el terminal.
  *
  * El servidor sale de la URL (`useServer`), nunca del `state` del router, que
- * no sobrevive a recargar. Un kubernetes sigue con su consola, que en esta
- * tanda es de sólo lectura.
+ * no sobrevive a recargar. Un kubernetes tiene dos pestañas: su consola y
+ * Provisioning (command-and-control-298).
  */
 export default function ServerLayout() {
   const { id } = useParams();
@@ -75,8 +97,52 @@ export default function ServerLayout() {
   if (loading || !server || foreign) {
     return <RowsSkeleton label={t("common:servers.loading")} rows={5} className="space-y-2 p-6" />;
   }
-  if (server.type === "kubernetes") return <K8sHub server={server} />;
+  if (server.type === "kubernetes") return <K8sLayout server={server} refreshServer={refresh} />;
   return <SwarmLayout server={server} refreshServer={refresh} />;
+}
+
+/** Las pestañas que tiene un kubernetes; lo demás es de swarm. */
+const K8S_TABS = ["", "provision"];
+
+/**
+ * Un servidor de kubernetes: su consola y Provisioning. Hasta el 2-nov-2026
+ * era la consola sola, sin `Outlet`, así que `/provision` nunca montaba
+ * `ServerProvision` y nadie podía aprovisionar un k8s desde cac: por eso gstd
+ * seguía dado de alta como swarm (incidente c94152ea).
+ */
+function K8sLayout({ server, refreshServer }: { server: Server; refreshServer: () => Promise<void> }) {
+  const { t } = useT();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const base = `/servers/${server.id}`;
+  const tab = pathname.startsWith(base) ? pathname.slice(base.length).replace(/^\/|\/$/g, "") : "";
+  // Una pestaña de swarm (un enlace viejo, `/services`) vuelve a la consola.
+  if (!K8S_TABS.includes(tab)) return <Navigate to={base} replace />;
+
+  const tabs = [
+    { to: "", end: true, label: t("common:servers.tabs.overview") },
+    { to: "provision", label: t("common:servers.tabs.provision") },
+  ];
+  const context: ServerContext = { server, refreshServer };
+  return (
+    <div className="flex h-full flex-col overflow-hidden bg-background">
+      <header className="flex shrink-0 items-center gap-3 border-b px-6 py-3">
+        <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} aria-label={t("common:servers.back")}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <span className="text-lg font-semibold">{server.name}</span>
+        <Badge variant="secondary">kubernetes</Badge>
+        <span className="font-mono text-sm text-muted-foreground">{server.host}</span>
+      </header>
+      <ServerTabs tabs={tabs} ariaLabel={t("common:servers.tabsLabel")} />
+      {/* La consola trae su propio margen; las demás pestañas, el del layout. */}
+      <main className={`flex min-h-0 flex-1 flex-col gap-4 overflow-auto ${tab === "" ? "" : "p-6"}`}>
+        <div key={pathname} className="motion-page flex min-h-0 flex-1 flex-col gap-4">
+          <Outlet context={context} />
+        </div>
+      </main>
+    </div>
+  );
 }
 
 function SwarmLayout({ server, refreshServer }: { server: Server; refreshServer: () => Promise<void> }) {
@@ -123,10 +189,7 @@ function SwarmLayout({ server, refreshServer }: { server: Server; refreshServer:
     { to: "backups", label: t("common:servers.tabs.backups") },
     { to: "provision", label: t("common:servers.tabs.provision") },
   ];
-  // NavLink marca la activa con `aria-current="page"`, que es lo que busca el
-  // indicador. Las cuentas de los rótulos cambian su anchura: van en la clave.
   const { pathname } = useLocation();
-  const tabBar = useSlidingIndicator<HTMLElement>(`${pathname}|${tabs.map((x) => x.label).join()}`);
 
   const context: ServerContext = { server, refreshServer, swarm };
 
@@ -163,25 +226,7 @@ function SwarmLayout({ server, refreshServer }: { server: Server; refreshServer:
         </Button>
       </header>
 
-      <nav ref={tabBar.ref} className="relative flex shrink-0 border-b px-6" aria-label={t("common:servers.tabsLabel")}>
-        {tabs.map((tab) => (
-          <NavLink
-            key={tab.to}
-            to={tab.to}
-            end={tab.end}
-            className={({ isActive }) =>
-              `-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-                isActive
-                  ? `text-foreground ${tabBar.rect ? "border-transparent" : "border-primary"}`
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`
-            }
-          >
-            {tab.label}
-          </NavLink>
-        ))}
-        <TabIndicator rect={tabBar.rect} first={tabBar.first} />
-      </nav>
+      <ServerTabs tabs={tabs} ariaLabel={t("common:servers.tabsLabel")} />
 
       <main
         className={`min-h-0 flex-1 flex-col gap-4 overflow-auto p-6 ${maximizado && sesiones.length > 0 ? "hidden" : "flex"}`}

@@ -13,7 +13,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
  *    provisioning, con esos endpoints contestando 404— enseña cómo empezar,
  *    no un error.
  * 4. Un servidor que no es de tu org (404) devuelve al panel.
- * 5. Un kubernetes sigue yendo a su consola.
+ * 5. Un kubernetes va a su consola, y tiene Provisioning y nada de swarm
+ *    (command-and-control-298).
  * 6. Un servidor sólo se enseña en su org: al llegar se entra en ella, y si
  *    luego cambias de org, sale al panel (command-and-control-225).
  */
@@ -35,8 +36,14 @@ vi.mock("@/pages/K8sHub", () => ({ default: () => <p>consola de kubernetes</p> }
 
 const { MemoryRouter, Route, Routes } = await import("react-router-dom");
 const { ConfirmProvider } = await import("@/components/ConfirmDialog");
-const { default: ServerLayout, useServerContext } = await import("./ServerLayout");
-const { default: ServerOverview } = await import("./ServerOverview");
+const { default: ServerLayout, ServerIndex, useServerContext } = await import("./ServerLayout");
+
+// Lo que pinta la pestaña Provisioning en estas pruebas: que el contexto
+// llega y con qué servidor.
+function ProvisionSpy() {
+  const { server } = useServerContext();
+  return <p>provisioning de {server.name}</p>;
+}
 const { default: ServerServices } = await import("./ServerServices");
 const { default: StackSecrets } = await import("@/pages/StackSecrets");
 const { default: ServiceDeploy } = await import("@/pages/servers/ServiceDeploy");
@@ -81,8 +88,9 @@ const montar = (url: string) =>
         <Routes>
           <Route path="/dashboard" element={<p>panel de servidores</p>} />
           <Route path="/servers/:id" element={<ServerLayout />}>
-            <Route index element={<ServerOverview />} />
+            <Route index element={<ServerIndex />} />
             <Route path="services" element={<ServerServices />} />
+            <Route path="provision" element={<ProvisionSpy />} />
             <Route path="secrets" element={<StackSecrets />} />
             <Route path="deploy" element={<ServiceDeploy />} />
           </Route>
@@ -167,6 +175,21 @@ describe("un servidor se abre con su URL", () => {
   it("un kubernetes va a su consola", async () => {
     backend(servidor({ type: "kubernetes" }));
     montar("/servers/srv-1");
+    await waitFor(() => expect(screen.getByText("consola de kubernetes")).toBeTruthy());
+  });
+
+  it("un kubernetes tiene Provisioning y nada de swarm", async () => {
+    backend(servidor({ type: "kubernetes" }));
+    montar("/servers/srv-1/provision");
+    await waitFor(() => expect(screen.getByText("provisioning de tds")).toBeTruthy());
+    const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
+    expect(hrefs).toEqual(["/servers/srv-1", "/servers/srv-1/provision"]);
+    expect(agentJson).not.toHaveBeenCalled();
+  });
+
+  it("una pestaña de swarm en un kubernetes vuelve a su consola", async () => {
+    backend(servidor({ type: "kubernetes" }));
+    montar("/servers/srv-1/services");
     await waitFor(() => expect(screen.getByText("consola de kubernetes")).toBeTruthy());
   });
 
