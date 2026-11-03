@@ -879,6 +879,7 @@
       "host-count": "Not exactly one host",
       "read-would-change": "A read that would change something",
       "touches-access": "Touches SSH or the firewall outside baseline",
+      "host-mismatch": "`public_ip` is not the host Ansible connects to",
       "destructive": "Destructive",
       "changes": "Changes"
     },

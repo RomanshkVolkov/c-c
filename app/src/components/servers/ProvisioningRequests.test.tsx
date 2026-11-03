@@ -66,6 +66,16 @@ describe("aprobar sigue el protocolo", () => {
     expect(canApprove({ risk: "change", flags: [{ code: "changes", level: "amber" as const }] }, "gstd", "", false)).toBe(true);
   });
 
+  // command-and-control-299: la bandera del backend se lee con sus palabras y
+  // sus dos IPs, y siendo ámbar no pide reconocerse.
+  it("public_ip distinta del host se dice con su etiqueta y sus dos valores", async () => {
+    serve(request({ flags: [{ code: "host-mismatch", level: "amber", detail: "public_ip=10.9.9.9 host=10.0.0.1" }] }));
+    render(<ProvisioningRequests server={server} canDecide />);
+    expect(await screen.findByText("`public_ip` is not the host Ansible connects to")).toBeTruthy();
+    expect(screen.getByText("public_ip=10.9.9.9 host=10.0.0.1")).toBeTruthy();
+    expect(disabled(screen.getByRole("button", { name: en.approve }))).toBe(false);
+  });
+
   it("con una bandera roja, el botón espera a que se reconozca y manda la decisión entera", async () => {
     serve(request({ flags: [{ code: "touches-access", level: "red", detail: "/etc/ssh/sshd_config" }] }));
     render(<ProvisioningRequests server={server} canDecide />);
