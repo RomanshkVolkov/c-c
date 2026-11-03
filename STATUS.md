@@ -13,6 +13,27 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**3-nov, en `main`: gstd como servidor de cac, fases A y B**
+(command-and-control-300; diseño en la página «Diseño · gstd como servidor
+de cac» del espacio). Lo que pixel-vps enseñó, corregido en `infra/ansible`:
+- **A** (301, `acf1674`): kubeconfig para el usuario de operación (antes sólo
+  root), `local-path` como StorageClass por defecto, `metrics-server`, y los
+  addons a su última versión con el mismo menor de k8s que pixel-vps (1.35.10,
+  Cilium 1.19.10, MetalLB 0.16.1, Envoy Gateway 1.9.3, CNPG 1.30.1, helm 3.22).
+  La compatibilidad de cada addon con el menor de k8s es una tabla en la prueba
+  `every_addon_supports_the_kubernetes_minor`: una versión fuera de ella no
+  compila.
+- **B** (302, `b1139c4`): **un certificado por zona** (`certificates`), por
+  DNS-01, nunca uno compartido con una lista de hosts; el wildcard de la zona
+  se emite antes de mudar nada. `certificates` no crea DNS (incidente
+  80e773bb). Rutas desde cualquier namespace, solver http01 para dominios de
+  fuera, listener TLS del TURN y puertos UDP opcionales.
+- En cac: plantilla «Kubernetes (kubeadm)» y gstd con ella, `certificates:
+  [gstd.guz-studio.dev, guz-studio.dev]`. Decisiones: S3 para CNPG, el
+  estándar del runner dwit-kb replicado para G Studio, y la definición del
+  runner en `g-studio-labs/actions-runner`.
+- Pendiente: aplicar en gstd (petición con ensayo, aprueba jose), y C–H.
+
 **2-nov (noche), en `main`: la tanda antes de la release** (295–299, un
 commit por pieza; el backend ya está desplegado).
 - **Releases** (295, decisión «marca y avisa»): el evento `release` guarda
