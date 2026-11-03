@@ -57,6 +57,31 @@
     group: "{{ ops_user }}"
     mode: "0600"
 
+# Un parche nuevo de Kubernetes (k8s_version) no es sólo subir los paquetes:
+# el control plane corre como pods estáticos con la versión del init, y los
+# sube `kubeadm upgrade apply`. Sin esto apt deja un kubelet más nuevo que su
+# apiserver (gstd, 3-nov-2026: paquetes 1.35.0 → 1.35.10). kubeadm ya es la
+# versión nueva (k8s_node lo subió con los demás), que es lo que pide.
+- name: Versión del control plane
+  ansible.builtin.command: kubectl version -o json
+  register: cp_version
+  changed_when: false
+  check_mode: false
+
+- name: kubeadm upgrade apply v{{ k8s_version }}
+  ansible.builtin.command: kubeadm upgrade apply v{{ k8s_version }} --yes
+  when: (cp_version.stdout | from_json).serverVersion.gitVersion != 'v' ~ k8s_version
+  changed_when: true
+
+# El paquete nuevo de kubelet no reinicia el servicio: hasta reiniciarlo
+# sigue corriendo el binario viejo.
+- name: kubelet reiniciado con su versión nueva
+  ansible.builtin.systemd_service:
+    name: kubelet
+    state: restarted
+    daemon_reload: true
+  when: (cp_version.stdout | from_json).serverVersion.gitVersion != 'v' ~ k8s_version
+
 # Un solo nodo: el control plane también corre cargas.
 - name: Quitar el taint del control plane
   ansible.builtin.shell:

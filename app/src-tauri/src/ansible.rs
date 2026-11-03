@@ -1741,6 +1741,32 @@ playbooks:
         assert_eq!(copy["mode"].as_str(), Some("0600"), "el kubeconfig lo lee alguien más");
     }
 
+    // Subir k8s_version a un parche nuevo sube los paquetes por apt, pero el
+    // control plane son pods estáticos con la versión del init: sin
+    // `kubeadm upgrade apply` queda un kubelet más nuevo que su apiserver, y
+    // sin reiniciar kubelet sigue corriendo el binario viejo (gstd,
+    // 3-nov-2026). Roturas que atrapa: quitar el upgrade; correrlo sin mirar
+    // la versión que hay (cada pasada lo repetiría); no reiniciar kubelet.
+    #[test]
+    fn a_new_kubernetes_patch_upgrades_the_control_plane() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let tasks = ansible_tasks(&std::fs::read_to_string(root.join("roles/k8s_control_plane/tasks/main.yml")).unwrap());
+        let when = |t: &serde_yaml::Value| serde_yaml::to_string(&t["when"]).unwrap_or_default();
+        let upgrade = tasks
+            .iter()
+            .position(|t| t.get("ansible.builtin.command").and_then(|c| c.as_str()).is_some_and(|c| c.starts_with("kubeadm upgrade apply v{{ k8s_version }}")))
+            .expect("un parche nuevo no sube el control plane");
+        assert!(when(&tasks[upgrade]).contains("k8s_version"), "el upgrade no mira la versión que corre");
+        let restart = tasks
+            .iter()
+            .position(|t| {
+                let s = t.get("ansible.builtin.systemd_service");
+                s.and_then(|s| s.get("name")).and_then(|n| n.as_str()) == Some("kubelet") && s.and_then(|s| s.get("state")).and_then(|n| n.as_str()) == Some("restarted")
+            })
+            .expect("kubelet no se reinicia con su versión nueva");
+        assert!(restart > upgrade && when(&tasks[restart]).contains("k8s_version"));
+    }
+
     // Sin una StorageClass por defecto un PVC se queda Pending y CNPG no
     // arranca; sin metrics-server `kubectl top` no contesta (pixel-vps,
     // 3-nov-2026). Roturas que atrapa: quitar el provisioner o dejar de
