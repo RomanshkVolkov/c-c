@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
@@ -162,6 +163,19 @@ func (r *ProvisioningRepository) StartWithGrant(run *domain.ProvisioningRun, now
 func (r *ProvisioningRepository) MoveRequest(id, from, to string) error {
 	return oneRow(r.db.Model(&domain.ProvisioningRequest{}).
 		Where("id = ? AND status = ?", id, from).Update("status", to))
+}
+
+// ReopenRequest suelta la ejecución que no llegó a arrancar (`run_id` o
+// `verify_run_id` a vacío) y deja la petición en `to`, si seguía en `from`.
+// La autorización (`grant_expires_at`) no se toca: sigue valiendo lo que le
+// quedaba.
+func (r *ProvisioningRepository) ReopenRequest(id, from, to, runColumn string) error {
+	if runColumn != "run_id" && runColumn != "verify_run_id" {
+		return fmt.Errorf("reopen request: unknown column %q", runColumn)
+	}
+	return oneRow(r.db.Model(&domain.ProvisioningRequest{}).
+		Where("id = ? AND status = ?", id, from).
+		Updates(map[string]any{"status": to, runColumn: ""}))
 }
 
 // Run: una ejecución, para saber al cerrarla de qué petición era.

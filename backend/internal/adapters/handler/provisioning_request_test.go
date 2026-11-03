@@ -85,7 +85,12 @@ func (p *protocol) start(playbook, requestID string, configSeq int, c *domain.Cl
 
 func (p *protocol) finish(runID, status, summary string) {
 	p.t.Helper()
-	b, _ := json.Marshal(map[string]any{"status": status, "summary": summary})
+	p.finishWith(runID, map[string]any{"status": status, "summary": summary})
+}
+
+func (p *protocol) finishWith(runID string, body map[string]any) {
+	p.t.Helper()
+	b, _ := json.Marshal(body)
 	rec := httptest.NewRecorder()
 	p.prov.Finish(rec, serverReq(http.MethodPatch, "srv-1", runID, string(b), agent()))
 	if rec.Code != http.StatusOK {
@@ -95,12 +100,17 @@ func (p *protocol) finish(runID, status, summary string) {
 
 func (p *protocol) status(id string) string {
 	p.t.Helper()
+	return p.get(id).Status
+}
+
+func (p *protocol) get(id string) domain.ProvisioningRequestResponse {
+	p.t.Helper()
 	rec := httptest.NewRecorder()
 	p.prov.GetRequest(rec, requestReq(http.MethodGet, "srv-1", id, "", person()))
 	if rec.Code != http.StatusOK {
 		p.t.Fatalf("leer → %d: %s", rec.Code, rec.Body.String())
 	}
-	return decode[domain.ProvisioningRequestResponse](p.t, rec).Status
+	return decode[domain.ProvisioningRequestResponse](p.t, rec)
 }
 
 func expect(t *testing.T, rec *httptest.ResponseRecorder, code int, errCode, what string) {
@@ -180,6 +190,58 @@ func TestAnAgentAsksAndOnlyAPersonApproves(t *testing.T) {
 	if got := p.status(req.ID); got != domain.ProvisioningRequestSucceeded {
 		t.Fatalf("verificada: %s", got)
 	}
+}
+
+// Una ejecución que muere antes de arrancar Ansible (1Password no contestó)
+// no tocó el servidor: gastar la autorización obligaba a rehacer ensayo y
+// aprobación (jose, 3-nov-2026). Roturas que atrapa: tratar `notStarted`
+// como un fallo normal (la petición queda `failed`); soltarla sin devolver
+// `run_id` (no se puede volver a correr); tocar la caducidad de la
+// autorización; y que un fallo con Ansible ya corrido se cuele como
+// «no arrancó».
+func TestARunThatNeverStartedKeepsTheGrant(t *testing.T) {
+	p, cleanup := newProtocol(t)
+	defer cleanup()
+	req := p.ask(swarmAsk)
+	expect(t, p.check(req.ID, cleanDryRun()), http.StatusOK, "", "ensayar")
+	expect(t, p.decide(req.ID, `{"approve":true}`, person()), http.StatusOK, "", "aprobar")
+	before := p.get(req.ID)
+
+	rec := p.start("swarm", req.ID, 1, agent())
+	expect(t, rec, http.StatusCreated, "", "correr")
+	run := decode[domain.ProvisioningRun](t, rec)
+	p.finishWith(run.ID, map[string]any{"status": "failed", "summary": "cloudflare_dns_token: 1Password refused the connection", "notStarted": true})
+
+	after := p.get(req.ID)
+	if after.Status != domain.ProvisioningRequestApproved || after.RunID != "" {
+		t.Fatalf("tras no arrancar: %s run=%q; tenía que volver a approved sin ejecución", after.Status, after.RunID)
+	}
+	if before.GrantExpiresAt == nil || after.GrantExpiresAt == nil || !before.GrantExpiresAt.Equal(*after.GrantExpiresAt) {
+		t.Fatalf("la autorización cambió: %v → %v", before.GrantExpiresAt, after.GrantExpiresAt)
+	}
+	// Y se vuelve a correr con la misma autorización, sin pedir ni aprobar.
+	rec = p.start("swarm", req.ID, 1, agent())
+	expect(t, rec, http.StatusCreated, "", "correr otra vez con la misma autorización")
+	run = decode[domain.ProvisioningRun](t, rec)
+	// Un fallo con Ansible ya corrido (sin notStarted) sí cierra la petición.
+	p.finish(run.ID, domain.ProvisioningFailed, "tds : ok=3 failed=1")
+	if got := p.status(req.ID); got != domain.ProvisioningRequestFailed {
+		t.Fatalf("un fallo de verdad: %s", got)
+	}
+
+	// Lo mismo en la verificación: la petición sigue «verificando» y la
+	// verificación se puede volver a lanzar.
+	req2 := p.ask(swarmAsk)
+	expect(t, p.check(req2.ID, cleanDryRun()), http.StatusOK, "", "ensayar")
+	expect(t, p.decide(req2.ID, `{"approve":true}`, person()), http.StatusOK, "", "aprobar")
+	run = decode[domain.ProvisioningRun](t, p.start("swarm", req2.ID, 1, agent()))
+	p.finish(run.ID, domain.ProvisioningSucceeded, "tds : ok=20 changed=4 unreachable=0 failed=0")
+	verify := decode[domain.ProvisioningRun](t, p.start("swarm-verify", req2.ID, 1, agent()))
+	p.finishWith(verify.ID, map[string]any{"status": "failed", "summary": "ops_password: 1Password refused the connection", "notStarted": true})
+	if got := p.get(req2.ID); got.Status != domain.ProvisioningRequestVerifying || got.VerifyRunID != "" {
+		t.Fatalf("verificación que no arrancó: %s verify_run=%q", got.Status, got.VerifyRunID)
+	}
+	expect(t, p.start("swarm-verify", req2.ID, 1, agent()), http.StatusCreated, "", "verificar otra vez")
 }
 
 // Una verificación que falla no se da por buena, y el rollback no corre solo:

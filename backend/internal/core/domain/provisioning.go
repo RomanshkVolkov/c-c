@@ -102,6 +102,13 @@ type FinishProvisioningRequest struct {
 	ExitCode *int   `json:"exitCode"`
 	Summary  string `json:"summary"`
 	LogTail  string `json:"logTail"`
+	// Ansible nunca arrancó: la app o la CLI murieron antes (1Password no
+	// contestó, el venv, el inventario). El servidor no se tocó, así que la
+	// petición vuelve a `approved` con su misma autorización y se vuelve a
+	// correr sin pedir ni aprobar otra vez. Lo contrario (gastar la
+	// autorización por un fallo de 1Password en el primer segundo) obligó a
+	// rehacer ensayo y aprobación (jose, 3-nov-2026).
+	NotStarted bool `json:"notStarted"`
 }
 
 // ProvisioningRunResponse añade el nombre de quien la lanzó, para pintarlo.

@@ -95,17 +95,28 @@ func (s *ProvisioningService) Finish(serverID, id string, req domain.FinishProvi
 	if err != nil || run.RequestID == "" {
 		return err
 	}
-	return s.advanceRequest(serverID, run, req.Status, summary)
+	return s.advanceRequest(serverID, run, req.Status, summary, req.NotStarted)
 }
 
 // advanceRequest lleva la petición al paso siguiente cuando acaba una de sus
-// ejecuciones (pasos 5 y 6 del protocolo).
-func (s *ProvisioningService) advanceRequest(serverID string, run *domain.ProvisioningRun, status, summary string) error {
+// ejecuciones (pasos 5 y 6 del protocolo). Una que no llegó a arrancar
+// Ansible (`notStarted`) no es un paso: no tocó el servidor, y la petición
+// vuelve a donde estaba con su autorización intacta, para correrla otra vez.
+func (s *ProvisioningService) advanceRequest(serverID string, run *domain.ProvisioningRun, status, summary string, notStarted bool) error {
 	p, err := s.repo.Request(serverID, run.RequestID)
 	if err != nil {
 		return err
 	}
 	ok := status == domain.ProvisioningSucceeded
+	if notStarted && !ok {
+		switch run.ID {
+		case p.RunID:
+			return s.repo.ReopenRequest(p.ID, domain.ProvisioningRequestRunning, domain.ProvisioningRequestApproved, "run_id")
+		case p.VerifyRunID:
+			return s.repo.ReopenRequest(p.ID, domain.ProvisioningRequestVerifying, domain.ProvisioningRequestVerifying, "verify_run_id")
+		}
+		return nil
+	}
 	switch run.ID {
 	case p.RunID:
 		next := domain.ProvisioningRequestFailed
