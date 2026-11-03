@@ -631,6 +631,12 @@ func (r *TaskRepository) DeleteTask(id string) error {
 // renames "Done" to "Shipped" doesn't silently start seeing finished work here.
 // Subtasks are left out for the same reason the board leaves them out: they're
 // part of their parent's breakdown, and listing both double-counts the work.
+//
+// **Salvo cuando se pregunta por una persona** (asignadas, creadas o seguidas
+// por alguien). Una subtarea asignada a mí es trabajo mío aunque su madre no
+// lo sea, y fuera de aquí no aparecía en ningún sitio: el tablero tampoco
+// enseña subtareas, y jose no encontró la 293 (command-and-control-297). Sale
+// con su madre (`parentSeq`, `parentTitle`), para saber de qué es.
 func (r *TaskRepository) ListOpen(orgIDs []string, superadmin bool, orgID string, limit int, f domain.OpenTaskFilter) ([]domain.OpenTask, error) {
 	if !superadmin && len(orgIDs) == 0 {
 		return []domain.OpenTask{}, nil
@@ -647,10 +653,15 @@ func (r *TaskRepository) ListOpen(orgIDs []string, superadmin bool, orgID string
 		Select(`t.id, t.seq, t.title, t.priority, t.due_at, t.updated_at, t.status,
 			t.project_id, t.visibility,
 			l.id AS list_id, l.name AS list_name,
-			sp.id AS space_id, sp.name AS space_name`).
+			sp.id AS space_id, sp.name AS space_name,
+			coalesce(p.seq, 0) AS parent_seq, coalesce(p.title, '') AS parent_title`).
 		Joins("JOIN task_lists l ON l.id = t.list_id").
 		Joins("JOIN task_spaces sp ON sp.id = l.space_id").
-		Where("t.archived_at IS NULL AND t.parent_id IS NULL AND t.deleted_at IS NULL")
+		Joins("LEFT JOIN items p ON p.id = t.parent_id").
+		Where("t.archived_at IS NULL AND t.deleted_at IS NULL")
+	if f.AssigneeID == "" && f.CreatorID == "" && f.WatcherID == "" {
+		q = q.Where("t.parent_id IS NULL")
+	}
 
 	// «De un cliente» es lo que el cliente ve, no lo que tiene canal: un ítem
 	// retirado (o creado interno en una lista con canal) conserva `project_id`

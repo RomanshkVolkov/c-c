@@ -58,3 +58,19 @@ func TestAPastedIDIsRecognised(t *testing.T) {
 		}
 	}
 }
+
+// Roturas que atrapa: recortar por bytes (parte una letra con tilde) o no
+// recortar.
+func TestSubtaskWhereTrimsTheParentTitleByLetters(t *testing.T) {
+	long := "Lo que mordió se registra por servidor y por área"
+	if got := SubtaskWhere("Backend", 289, long); got != "Backend › #289 Lo que mordió se registra por servidor y…" {
+		t.Errorf("%q", got)
+	}
+	if got := SubtaskWhere("Backend", 7, "Corto"); got != "Backend › #7 Corto" {
+		t.Errorf("%q", got)
+	}
+	ñ := "ñññññññññññññññññññññññññññññññññññññññññ"
+	if got := SubtaskWhere("L", 1, ñ); got != "L › #1 "+string([]rune(ñ)[:40])+"…" {
+		t.Errorf("recorta mal una ñ: %q", got)
+	}
+}

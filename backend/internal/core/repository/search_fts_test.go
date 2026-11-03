@@ -255,3 +255,50 @@ func TestAJiraKeyAndACacRefFindTheirTask(t *testing.T) {
 		}
 	}
 }
+
+// Una subtarea dice de qué tarea cuelga en su «dónde»: el tablero no enseña
+// subtareas, y con sólo el nombre de la lista no se sabía dónde buscarla
+// (command-and-control-297). Por los dos caminos: el de texto completo y el
+// de `LIKE` de una base sin índice.
+//
+// Roturas que atrapa: no pasar los aciertos por `withParents` en alguno de
+// los caminos, o ponerle madre a una tarea suelta.
+func TestASubtaskSaysWhoseItIs(t *testing.T) {
+	db := searchFTSDB(t)
+	madre := &domain.Item{OrgID: "org-1", ListID: "l", Seq: 289, Title: "Lo que mordió se registra por servidor y por área, y un agente lo encuentra", Status: domain.ReportPending}
+	madre.ID = "madre"
+	padre := "madre"
+	hija := &domain.Item{OrgID: "org-1", ListID: "l", Seq: 293, Title: "Migración de los incidentes", ParentID: &padre, Status: domain.ReportPending}
+	hija.ID = "hija"
+	suelta := &domain.Item{OrgID: "org-1", ListID: "l", Seq: 300, Title: "Otra migración suelta", Status: domain.ReportPending}
+	suelta.ID = "suelta"
+	for _, m := range []any{madre, hija, suelta} {
+		if err := db.Create(m).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := "Lista › #289 Lo que mordió se registra por servidor y…"
+	check := func(how string) {
+		t.Helper()
+		hits, err := NewSearchRepository(db).Tasks("migración", "org-1", 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		where := map[string]string{}
+		for _, h := range hits {
+			where[h.ID] = h.Where
+		}
+		if where["hija"] != want {
+			t.Errorf("%s: la subtarea no dice de quién es: %q", how, where["hija"])
+		}
+		if where["suelta"] != "Lista" {
+			t.Errorf("%s: a una tarea suelta se le puso madre: %q", how, where["suelta"])
+		}
+	}
+	check("texto completo")
+	// Sin la columna de búsqueda, la consulta cae a `tasksLike`.
+	if err := db.Exec("ALTER TABLE items DROP COLUMN search").Error; err != nil {
+		t.Fatal(err)
+	}
+	check("LIKE")
+}

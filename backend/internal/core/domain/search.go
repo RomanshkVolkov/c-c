@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"fmt"
 	"strings"
 	"time"
 	"unicode"
@@ -380,4 +381,19 @@ func CleanSnippet(s string) string {
 	s = strings.ReplaceAll(s, HighlightStart, "**")
 	s = strings.ReplaceAll(s, SnippetLT, "<")
 	return strings.ReplaceAll(s, HighlightStop, "**")
+}
+
+// SubtaskMaxParentTitle: hasta cuántas letras del título de la madre caben en
+// el «dónde» de una subtarea.
+const SubtaskMaxParentTitle = 40
+
+// SubtaskWhere: el «dónde» de una subtarea en la búsqueda: su lista y la
+// tarea de la que cuelga, `Backend › #289 Lo que mordió se registra…`. El
+// título se recorta por letras, no por bytes: una «ñ» partida sería basura.
+func SubtaskWhere(list string, parentSeq int, parentTitle string) string {
+	t := []rune(strings.TrimSpace(parentTitle))
+	if len(t) > SubtaskMaxParentTitle {
+		t = append(t[:SubtaskMaxParentTitle], '…')
+	}
+	return fmt.Sprintf("%s › #%d %s", list, parentSeq, string(t))
 }

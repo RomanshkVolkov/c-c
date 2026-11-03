@@ -1139,6 +1139,10 @@ type OpenTask struct {
 	// you would otherwise have to open it to find out.
 	SubtasksDone  int64 `json:"subtasksDone"`
 	SubtasksTotal int64 `json:"subtasksTotal"`
+	// ParentSeq y ParentTitle: de qué tarea es, si es una subtarea (sólo
+	// salen en «Mi trabajo»: ver TaskRepository.ListOpen).
+	ParentSeq   int    `json:"parentSeq,omitempty"`
+	ParentTitle string `json:"parentTitle,omitempty"`
 	// Assignee is who it belongs to, by name. The name and not the id, because
 	// what a card shows is initials, and resolving ids to people in the client
 	// would mean holding a directory it has no other use for.

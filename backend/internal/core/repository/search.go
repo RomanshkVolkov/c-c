@@ -95,7 +95,43 @@ func (r *SearchRepository) TasksTS(query, tsq, orgID string, limit int) ([]domai
 	if len(out) > limit {
 		out = out[:limit]
 	}
-	return out, nil
+	return r.withParents(out), nil
+}
+
+// withParents: a una subtarea, en su «dónde», de qué tarea cuelga
+// (`Backend › #289 Lo que mordió…`). Sin eso salía con el nombre de la lista
+// y nada más, como si fuera una tarea suelta, y no se sabía dónde buscarla:
+// el tablero no enseña subtareas (command-and-control-297). Una consulta por
+// todas.
+func (r *SearchRepository) withParents(hits []domain.SearchHit) []domain.SearchHit {
+	var ids []string
+	for _, h := range hits {
+		if h.Kind == domain.SearchTask {
+			ids = append(ids, h.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return hits
+	}
+	type row struct {
+		ID, Title string
+		Seq       int
+	}
+	var rows []row
+	if err := r.db.Table("items c").Select("c.id, p.seq, p.title").
+		Joins("JOIN items p ON p.id = c.parent_id").Where("c.id IN ?", ids).Scan(&rows).Error; err != nil {
+		return hits
+	}
+	parent := map[string]row{}
+	for _, x := range rows {
+		parent[x.ID] = x
+	}
+	for i := range hits {
+		if p, ok := parent[hits[i].ID]; ok && hits[i].Kind == domain.SearchTask {
+			hits[i].Where = domain.SubtaskWhere(hits[i].Where, p.Seq, p.Title)
+		}
+	}
+	return hits
 }
 
 // taskByRef: la tarea que nombra la consulta, si la consulta es sólo una
@@ -163,7 +199,7 @@ func (r *SearchRepository) tasksLike(query, orgID string, limit int) ([]domain.S
 			Where: x.ListName, Link: "/tasks?task=" + x.ID,
 		})
 	}
-	return out, err
+	return r.withParents(out), err
 }
 
 // Notes are personal: the fence is the owner, not the organization. Con texto
@@ -609,7 +645,7 @@ func (r *SearchRepository) ByID(id, orgID, userID string) (tasks, notes, docs []
 	}
 	if t := one(`SELECT t.title, l.name AS "where" FROM items t JOIN task_lists l ON l.id = t.list_id
 		WHERE t.id = ? AND t.org_id = ? AND t.deleted_at IS NULL`, id, orgID); t != nil {
-		tasks = append(tasks, domain.SearchHit{Kind: domain.SearchTask, ID: id, Title: t.Title, Where: t.Where, Link: "/tasks?task=" + id})
+		tasks = r.withParents(append(tasks, domain.SearchHit{Kind: domain.SearchTask, ID: id, Title: t.Title, Where: t.Where, Link: "/tasks?task=" + id}))
 		return
 	}
 	// Un nodo: su portada.

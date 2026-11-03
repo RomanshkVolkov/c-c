@@ -333,3 +333,61 @@ func myWorkDB(t *testing.T) (*gorm.DB, func()) {
 		adminSQL.Close()
 	}
 }
+
+// Una subtarea asignada a mí es trabajo mío aunque su madre no lo sea, y sale
+// con su madre para saber de qué es. La lista sin persona sigue sin
+// subtareas: ahí contaría dos veces el trabajo (command-and-control-297).
+//
+// Roturas que atrapa: dejar el `parent_id IS NULL` para todos (la subtarea no
+// sale en ningún sitio), quitarlo para todos (la lista general la cuenta dos
+// veces), o no traer la madre.
+func TestASubtaskAssignedToMeIsMyWork(t *testing.T) {
+	db, cleanup := myWorkDB(t)
+	defer cleanup()
+	svc := myWorkSvc(db)
+	madre := &domain.Item{OrgID: "org-1", ListID: "list-1", Seq: 289, Title: "Lo que mordió se registra por servidor", Status: domain.ReportPending}
+	madre.ID = "it-madre"
+	padre := "it-madre"
+	ana := "u-ana"
+	hija := &domain.Item{OrgID: "org-1", ListID: "list-1", Seq: 293, Title: "Migración", ParentID: &padre,
+		AssigneeUserID: &ana, Status: domain.ReportPending}
+	hija.ID = "it-hija"
+	for _, m := range []any{madre, hija} {
+		if err := db.Create(m).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	mine, err := svc.ListOpen([]string{"org-1"}, false, "org-1", 0, domain.OpenTaskFilter{AssigneeID: "u-ana"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got *domain.OpenTask
+	for i := range mine {
+		if mine[i].ID == "it-hija" {
+			got = &mine[i]
+		}
+	}
+	if got == nil {
+		t.Fatal("una subtarea asignada a mí no sale en mi trabajo")
+	}
+	if got.ParentSeq != 289 || got.ParentTitle != "Lo que mordió se registra por servidor" {
+		t.Errorf("sale sin su madre: %d %q", got.ParentSeq, got.ParentTitle)
+	}
+	if idsDe(mine)["it-madre"] {
+		t.Error("la madre no es mía")
+	}
+
+	all, err := svc.ListOpen([]string{"org-1"}, false, "org-1", 0, domain.OpenTaskFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids := idsDe(all); ids["it-hija"] || !ids["it-madre"] {
+		t.Errorf("la lista sin persona tiene que seguir sin subtareas: %v", ids)
+	}
+	for _, o := range all {
+		if o.ID == "it-madre" && (o.ParentSeq != 0 || o.ParentTitle != "") {
+			t.Errorf("una tarea suelta no tiene madre: %+v", o)
+		}
+	}
+}
