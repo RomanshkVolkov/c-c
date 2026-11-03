@@ -157,18 +157,13 @@ func (r *IncidentRepository) ByID(id string) (*domain.Incident, error) {
 		in.OriginTitle, in.OriginRef = r.taskRef(in.OriginTaskID)
 	}
 	r.db.Model(&domain.Incident{}).Select("id").Where("supersedes_id = ?", in.ID).Limit(1).Scan(&in.SupersededByID)
-	servers, areas, err := r.links([]string{in.ID})
+	l, err := r.links([]string{in.ID})
 	if err != nil {
 		return nil, err
 	}
-	in.Servers, in.Areas = orEmptyServers(servers[in.ID]), orEmptyStrings(areas[in.ID])
+	in.Servers, in.Areas, in.Guards = orEmptyServers(l.servers[in.ID]), orEmptyStrings(l.areas[in.ID]), orEmptyStrings(l.guards[in.ID])
 	in.Commits = []domain.IncidentCommit{}
 	if err := r.db.Where("incident_id = ?", in.ID).Order("created_at").Find(&in.Commits).Error; err != nil {
-		return nil, err
-	}
-	in.Guards = []string{}
-	if err := r.db.Model(&domain.IncidentGuard{}).Where("incident_id = ?", in.ID).
-		Order("created_at").Pluck("text", &in.Guards).Error; err != nil {
 		return nil, err
 	}
 	return in, nil
@@ -203,30 +198,47 @@ func (r *IncidentRepository) taskRef(taskID string) (title, ref string) {
 	return row.Title, ref
 }
 
-// links: los servidores y las áreas de varios incidentes, en dos consultas.
-func (r *IncidentRepository) links(ids []string) (map[string][]domain.IncidentServerRef, map[string][]string, error) {
+// incidentLinks: los servidores, las áreas y los guardianes de varios
+// incidentes, por id.
+type incidentLinks struct {
+	servers map[string][]domain.IncidentServerRef
+	areas   map[string][]string
+	guards  map[string][]string
+}
+
+// links: ver incidentLinks, en tres consultas.
+func (r *IncidentRepository) links(ids []string) (*incidentLinks, error) {
 	servers := map[string][]domain.IncidentServerRef{}
 	areas := map[string][]string{}
+	guards := map[string][]string{}
+	out := &incidentLinks{servers: servers, areas: areas, guards: guards}
 	if len(ids) == 0 {
-		return servers, areas, nil
+		return out, nil
 	}
 	var srows []struct{ IncidentID, ID, Name string }
 	if err := r.db.Table("incident_servers isv").Select("isv.incident_id, s.id, s.name").
 		Joins("JOIN servers s ON s.id = isv.server_id").Where("isv.incident_id IN ?", ids).
 		Order("s.name").Scan(&srows).Error; err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	for _, x := range srows {
 		servers[x.IncidentID] = append(servers[x.IncidentID], domain.IncidentServerRef{ID: x.ID, Name: x.Name})
 	}
 	var arows []domain.IncidentArea
 	if err := r.db.Where("incident_id IN ?", ids).Order("area").Find(&arows).Error; err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	for _, x := range arows {
 		areas[x.IncidentID] = append(areas[x.IncidentID], x.Area)
 	}
-	return servers, areas, nil
+	var grows []domain.IncidentGuard
+	if err := r.db.Where("incident_id IN ?", ids).Order("created_at").Find(&grows).Error; err != nil {
+		return nil, err
+	}
+	for _, x := range grows {
+		guards[x.IncidentID] = append(guards[x.IncidentID], x.Text)
+	}
+	return out, nil
 }
 
 // List: los incidentes vigentes (no sustituidos) que pasan el filtro, los
@@ -278,15 +290,16 @@ func (r *IncidentRepository) List(f domain.IncidentFilter) ([]domain.IncidentSum
 	for i := range out {
 		ids[i] = out[i].ID
 	}
-	servers, areas, err := r.links(ids)
+	l, err := r.links(ids)
 	if err != nil {
 		return nil, err
 	}
 	// Si su arreglo ya salió en una release: un extra, sin él no se cae.
 	shipped, _ := ShippedOfIncidents(r.db, ids)
 	for i := range out {
-		out[i].Servers = orEmptyServers(servers[out[i].ID])
-		out[i].Areas = orEmptyStrings(areas[out[i].ID])
+		out[i].Servers = orEmptyServers(l.servers[out[i].ID])
+		out[i].Areas = orEmptyStrings(l.areas[out[i].ID])
+		out[i].Guards = orEmptyStrings(l.guards[out[i].ID])
 		out[i].Shipped = shipped[out[i].ID]
 	}
 	return out, nil
@@ -314,14 +327,14 @@ func (r *IncidentRepository) ForDocs(orgID string, docIDs []string) (map[string]
 	for i := range rows {
 		ids[i] = rows[i].ID
 	}
-	servers, areas, err := r.links(ids)
+	l, err := r.links(ids)
 	if err != nil {
 		return nil, err
 	}
 	shipped, _ := ShippedOfIncidents(r.db, ids)
 	for _, x := range rows {
 		s := x.IncidentSummary
-		s.Servers, s.Areas = orEmptyServers(servers[s.ID]), orEmptyStrings(areas[s.ID])
+		s.Servers, s.Areas, s.Guards = orEmptyServers(l.servers[s.ID]), orEmptyStrings(l.areas[s.ID]), orEmptyStrings(l.guards[s.ID])
 		s.Shipped = shipped[s.ID]
 		byDoc[x.DocID] = append(byDoc[x.DocID], s)
 	}

@@ -195,8 +195,12 @@ type IncidentSummary struct {
 	OwnerID   string              `json:"ownerId"`
 	Servers   []IncidentServerRef `gorm:"-" json:"servers"`
 	Areas     []string            `gorm:"-" json:"areas"`
-	CreatedAt time.Time           `json:"recordedAt"`
-	FixedAt   *time.Time          `json:"fixedAt,omitempty"`
+	// Guards: las pruebas que lo guardan. Van en el listado para que el hook
+	// `cac-edit` sepa, sin pedir cada uno, qué incidentes viven en el fichero
+	// que se edita (command-and-control-296).
+	Guards    []string   `gorm:"-" json:"guards"`
+	CreatedAt time.Time  `json:"recordedAt"`
+	FixedAt   *time.Time `json:"fixedAt,omitempty"`
 	// Shipped: todos sus commits ya salieron en una release. En uno abierto
 	// es «el arreglo está publicado»; marcarlo arreglado lo decide alguien.
 	Shipped *ReleaseRef `gorm:"-" json:"shipped,omitempty"`

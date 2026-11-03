@@ -364,3 +364,38 @@ func TestTheMapShowsWhatBitOnEachNode(t *testing.T) {
 		t.Errorf("no dice que recortó: %v", m.Truncated)
 	}
 }
+
+// El hook `cac-edit` casa el fichero que se edita con las pruebas que guardan
+// cada incidente, y lo hace con el listado, sin pedir cada uno: los guardianes
+// tienen que viajar en el listado y en el mapa (command-and-control-296).
+//
+// Roturas que atrapa: no rellenar `Guards` en `List` o en `ForDocs`, o
+// devolver `null` donde no hay ninguno.
+func TestTheListAndTheMapCarryTheGuards(t *testing.T) {
+	db := incidentDB(t)
+	svc := incidentSvc(db)
+	con := record(t, svc, "l-back", domain.IncidentRequest{Title: "con guardián",
+		Guards: []string{"ansible::tests::cert_manager_can_clean_its_cloudflare_challenge"}})
+	sin := record(t, svc, "l-back", domain.IncidentRequest{Title: "sin guardián"})
+
+	list, _, err := svc.List(domain.IncidentFilter{OrgIDs: []string{"org-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byDoc, err := repository.NewIncidentRepository(db).ForDocs("org-1", []string{con.DocID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, got := range map[string][]domain.IncidentSummary{"el listado": list, "el mapa": byDoc[con.DocID]} {
+		guards := map[string][]string{}
+		for _, i := range got {
+			guards[i.ID] = i.Guards
+		}
+		if g := guards[con.ID]; len(g) != 1 || g[0] != "ansible::tests::cert_manager_can_clean_its_cloudflare_challenge" {
+			t.Errorf("%s no trae el guardián: %v", name, g)
+		}
+		if g := guards[sin.ID]; g == nil || len(g) != 0 {
+			t.Errorf("%s: uno sin guardianes tiene que traer [] y trae %#v", name, g)
+		}
+	}
+}
