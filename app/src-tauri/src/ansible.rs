@@ -1763,6 +1763,16 @@ playbooks:
             .position(|t| t.get("ansible.builtin.command").and_then(|c| c.as_str()).is_some_and(|c| c.starts_with("kubeadm upgrade apply v{{ k8s_version }}")))
             .expect("un parche nuevo no sube el control plane");
         assert!(when(&tasks[upgrade]).contains("k8s_version"), "el upgrade no mira la versión que corre");
+        // apt acaba de reiniciar containerd y kubelet: el preflight de kubeadm
+        // (un Job de salud con 15 s de tope) falló a la primera (gstd,
+        // 3-nov-2026). Roturas que atrapa: subir sin esperar al nodo; sin
+        // reintentar.
+        assert!(tasks[upgrade].get("until").is_some() && tasks[upgrade]["retries"].as_u64().unwrap_or(0) >= 2, "el upgrade no insiste");
+        let ready = tasks
+            .iter()
+            .position(|t| t.get("ansible.builtin.command").and_then(|c| c.as_str()).is_some_and(|c| c.contains("wait --for=condition=Ready node")))
+            .expect("nadie espera al nodo antes de subir el control plane");
+        assert!(ready < upgrade, "la espera del nodo va después del upgrade");
         let restart = tasks
             .iter()
             .position(|t| {

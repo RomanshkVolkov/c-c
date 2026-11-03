@@ -77,9 +77,25 @@
   changed_when: false
   check_mode: false
 
+# apt acaba de reiniciar containerd y kubelet (los subió): el nodo pasa unos
+# segundos sin estar Ready y el primer pod tarda en arrancar. El preflight de
+# kubeadm crea un Job de salud con un tope de 15 s y lo dio por muerto a los
+# 12 s de arrancar el pod (gstd, 3-nov-2026). Se espera al nodo y se insiste.
+- name: El nodo Ready antes de subir el control plane
+  ansible.builtin.command: kubectl wait --for=condition=Ready node --all --timeout=300s
+  changed_when: false
+  check_mode: false
+  when: (cp_version.stdout | from_json).serverVersion.gitVersion != 'v' ~ k8s_version
+
 - name: kubeadm upgrade apply v{{ k8s_version }}
   ansible.builtin.command: kubeadm upgrade apply v{{ k8s_version }} --yes
-  when: (cp_version.stdout | from_json).serverVersion.gitVersion != 'v' ~ k8s_version
+  register: cp_upgrade
+  until: cp_upgrade.rc == 0
+  retries: 3
+  delay: 20
+  when:
+    - not ansible_check_mode
+    - (cp_version.stdout | from_json).serverVersion.gitVersion != 'v' ~ k8s_version
   changed_when: true
 
 # El paquete nuevo de kubelet no reinicia el servicio: hasta reiniciarlo
