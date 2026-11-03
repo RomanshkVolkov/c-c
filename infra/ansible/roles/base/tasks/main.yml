@@ -23,3 +23,12 @@
     port: "{{ item | string }}"
     proto: tcp
   loop: "{{ firewall_web_ports }}"
+
+# Lo UDP que pida la config (LiveKit: media 7882 y TURN 3478). Un servidor
+# sin voz no declara nada y no abre nada.
+- name: El firewall deja entrar lo UDP que se pide
+  community.general.ufw:
+    rule: allow
+    port: "{{ item | string }}"
+    proto: udp
+  loop: "{{ firewall_udp_ports | default([]) }}"

@@ -1,8 +1,24 @@
 # {{ ansible_managed }}
 # Lo global del clúster, como ~/projects/dwit/infra/k8s/dwit-kb (envoy/ y
-# cert-manager/), con dos diferencias a propósito: el certificado es el
-# wildcard de {{ base_domain }} por DNS01 (pixel-vps emite por HTTP01 una lista
-# de hosts) y Envoy corre con una réplica.
+# cert-manager/), con tres diferencias a propósito:
+#
+# - **Un certificado por zona, por DNS-01**, nunca uno compartido. pixel-vps
+#   emite UN certificado con 13 dominios por HTTP-01: añadir un dominio es
+#   editar un objeto que tocan varios proyectos y reemitir todo, y un host que
+#   deja de apuntar al servidor rompe la renovación de los demás (3-nov-2026).
+#   Aquí cada entrada de `certificates` (y `base_domain` si la lista está
+#   vacía) es su propio Certificate con `<d>` y `*.<d>`, y todos cuelgan del
+#   listener https (Envoy elige por SNI). Un dominio nuevo de la zona no toca
+#   ningún certificado: ya está cubierto por el wildcard de su zona. Y como
+#   DNS-01 no mira a dónde apunta el DNS, un wildcard se emite ANTES de mover
+#   los registros: así se muda un servicio sin ventana sin TLS.
+# - Las rutas entran desde cualquier namespace: cada app vive en el suyo.
+# - Envoy corre con una réplica.
+#
+# Un dominio de fuera de la zona (el de un cliente, con DNS en otro sitio) no
+# va aquí: su app declara su propio Certificate sin wildcard, que el solver
+# http01 de abajo emite por el Gateway.
+{% set cert_domains = (certificates | default([])) or [base_domain] %}
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata: {name: vps-pool, namespace: metallb-system}
@@ -45,14 +61,28 @@ spec:
     - name: http
       protocol: HTTP
       port: 80
-      allowedRoutes: {namespaces: {from: Same}}
+      allowedRoutes: {namespaces: {from: All}}
     - name: https
       protocol: HTTPS
       port: 443
       tls:
         mode: Terminate
-        certificateRefs: [{name: secret-tls, namespace: default}]
-      allowedRoutes: {namespaces: {from: Same}}
+        certificateRefs:
+{% for d in cert_domains %}
+          - {name: tls-{{ d | replace('.', '-') }}, namespace: default}
+{% endfor %}
+      allowedRoutes: {namespaces: {from: All}}
+{% if livekit_turn_host | default('') | length > 0 %}
+    # El TURN de LiveKit por el 443: TLS sin terminar, Envoy sólo mira el SNI
+    # y lo pasa entero (un TLSRoute de la app lo recoge). Convive con https en
+    # el mismo puerto porque este listener tiene hostname y el otro no.
+    - name: turn-tls
+      protocol: TLS
+      port: 443
+      hostname: {{ livekit_turn_host }}
+      tls: {mode: Passthrough}
+      allowedRoutes: {namespaces: {from: All}}
+{% endif %}
 ---
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -63,14 +93,23 @@ spec:
     email: {{ acme_email }}
     privateKeySecretRef: {name: letsencrypt-prod}
     solvers:
-      - dns01:
+      # Lo de la zona, por DNS (es lo único que emite wildcards).
+      - selector: {dnsZones: ["{{ dns_zone }}"]}
+        dns01:
           cloudflare:
             apiTokenSecretRef: {name: cloudflare-dns-token, key: api-token}
+      # Lo demás (un dominio de un cliente con DNS en otro sitio), por HTTP
+      # a través del Gateway: sin wildcard, un Certificate por app.
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs: [{kind: Gateway, name: gateway-api, namespace: default}]
+{% for d in cert_domains %}
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
-metadata: {name: wildcard, namespace: default}
+metadata: {name: wildcard-{{ d | replace('.', '-') }}, namespace: default}
 spec:
-  secretName: secret-tls
+  secretName: tls-{{ d | replace('.', '-') }}
   issuerRef: {name: letsencrypt-prod, kind: ClusterIssuer}
-  dnsNames: ["{{ base_domain }}", "*.{{ base_domain }}"]
+  dnsNames: ["{{ d }}", "*.{{ d }}"]
+{% endfor %}

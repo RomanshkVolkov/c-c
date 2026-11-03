@@ -131,6 +131,21 @@
   changed_when: "'serverside-applied' in dns_secret.stdout and 'unchanged' not in dns_secret.stdout"
   no_log: true
 
+# Un wildcard sólo lo emite DNS-01, y el solver DNS sólo cubre dns_zone: un
+# dominio de `certificates` fuera de la zona caería en el solver http01 y su
+# `*.<d>` no saldría nunca, sin decir por qué. Se dice antes.
+- name: Los dominios con certificado wildcard cuelgan de la zona
+  ansible.builtin.assert:
+    that: >-
+      certificates | default([]) | reject('match', '^(.+\.)?' ~ (dns_zone | lower | regex_escape) ~ '$')
+      | list | length == 0
+    fail_msg: >-
+      Todo dominio de `certificates` tiene que ser {{ dns_zone }} o colgar de
+      ella: un wildcard sólo se emite por DNS y el token de Cloudflare es de
+      esa zona. Un dominio de otra zona va en un Certificate propio de su app,
+      sin wildcard, por HTTP-01.
+    quiet: true
+
 - name: Manifiestos del clúster
   ansible.builtin.template:
     src: "{{ item }}.j2"
@@ -148,6 +163,15 @@
   retries: 12
   delay: 10
   changed_when: "'serverside-applied' in cluster_apply.stdout"
+  when: not ansible_check_mode
+
+# Hasta el 3-nov-2026 el certificado era uno solo, `wildcard` → `secret-tls`.
+# Ahora cada zona tiene el suyo (`wildcard-<zona>` → `tls-<zona>`) y aquél ya
+# no lo referencia nadie: fuera, para que no siga renovándose por su cuenta.
+- name: Certificado único de antes, fuera
+  ansible.builtin.command: kubectl -n default delete certificate wildcard secret secret-tls --ignore-not-found
+  register: old_cert
+  changed_when: "'deleted' in old_cert.stdout"
   when: not ansible_check_mode
 
 - name: Aplicar whoami

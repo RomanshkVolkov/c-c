@@ -1815,6 +1815,88 @@ playbooks:
         assert!(default("helm_version").starts_with("v3."), "kubernetes.core.helm no está probado con helm 4");
     }
 
+    // pixel-vps emite UN certificado con 13 dominios por HTTP-01: añadir uno
+    // es editar un objeto que tocan varios proyectos y reemitir todo, y un
+    // host que deja de apuntar al servidor rompe la renovación de los demás
+    // (3-nov-2026). Aquí hay un Certificate por zona, por DNS-01, todos en el
+    // listener https, y las rutas entran desde cualquier namespace. Roturas
+    // que atrapa: volver a un certificado fuera del bucle; un listener que no
+    // enumera todos los secretos; rutas sólo desde `default`; perder el
+    // solver http01 (los dominios de fuera de la zona) o el selector del
+    // dns01 (que lo intentaría con todo).
+    #[test]
+    fn a_certificate_per_zone_and_routes_from_any_namespace() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let m = parse_manifest(&std::fs::read_to_string(root.join(MANIFEST_FILE)).unwrap()).unwrap();
+        let certs = m.playbooks.iter().find(|p| p.id == "k8s").unwrap().vars.iter().find(|v| v.name == "certificates").expect("k8s no declara certificates");
+        assert_eq!(certs.kind.as_deref(), Some(VAR_KIND_LIST));
+        let t = std::fs::read_to_string(root.join("roles/k8s_addons/templates/cluster.yaml.j2")).unwrap();
+        let between = |a: &str, b: &str| -> String {
+            let s = t.find(a).unwrap_or_else(|| panic!("falta `{a}`"));
+            let e = t[s..].find(b).unwrap_or_else(|| panic!("falta `{b}` después de `{a}`"));
+            t[s..s + e].to_string()
+        };
+        assert_eq!(t.matches("kind: Certificate").count(), 1, "más de un Certificate escrito a mano");
+        assert!(between("{% for d in cert_domains %}\n---", "{% endfor %}").contains("kind: Certificate"), "el Certificate no sale del bucle de zonas");
+        assert!(between("certificateRefs:", "allowedRoutes").contains("{% for d in cert_domains %}"), "el listener https no enumera todos los secretos");
+        assert!(!t.contains("from: Same"), "las rutas sólo entran desde default");
+        assert!(t.matches("from: All").count() >= 2, "http y https tienen que admitir rutas de cualquier namespace");
+        let solvers = between("solvers:", "kind: Certificate");
+        assert!(solvers.contains("dnsZones: [\"{{ dns_zone }}\"]"), "el solver dns01 no se limita a la zona");
+        assert!(solvers.contains("dns01") && solvers.contains("http01"), "faltan solvers: dns01 para la zona, http01 para lo demás");
+    }
+
+    // Un wildcard de la zona (`*.guz-studio.dev`) como CERTIFICADO está bien;
+    // como REGISTRO se llevó a gstd todo subdominio sin registro propio
+    // (incidente 80e773bb). Roturas que atrapa: que dns_records cree registros
+    // de `certificates`; que un dominio de `certificates` fuera de la zona
+    // pase sin aviso (su wildcard iría al solver http01 y no saldría nunca).
+    #[test]
+    fn a_zone_certificate_makes_no_dns_record() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let dns = ansible_tasks(&std::fs::read_to_string(root.join("roles/dns_records/tasks/main.yml")).unwrap());
+        let records = dns.iter().find(|t| t.get("community.general.cloudflare_dns").is_some()).expect("sin registros DNS");
+        let items = serde_yaml::to_string(&records["loop"]).unwrap();
+        assert!(items.contains("base_domain"), "los registros no son los de base_domain");
+        for forbidden in ["certificates", "cert_domains", "dns_zone"] {
+            assert!(!items.contains(forbidden), "dns_records crea registros de `{forbidden}`");
+        }
+        let addons = ansible_tasks(&std::fs::read_to_string(root.join("roles/k8s_addons/tasks/main.yml")).unwrap());
+        let guard = addons
+            .iter()
+            .filter_map(|t| t.get("ansible.builtin.assert"))
+            .find(|a| serde_yaml::to_string(&a["that"]).unwrap().contains("certificates"))
+            .expect("nada comprueba que los dominios de certificates cuelgan de la zona");
+        assert!(serde_yaml::to_string(&guard["that"]).unwrap().contains("dns_zone"));
+    }
+
+    // TURN y los puertos UDP de LiveKit son opcionales: un servidor sin voz
+    // no abre nada. Y la verificación espera a TODOS los certificados, no
+    // sólo al primero. Roturas que atrapa: el listener turn-tls sin su
+    // guarda, o terminando el TLS; los puertos UDP sin su variable o por TCP;
+    // un verify que sólo mira un certificado.
+    #[test]
+    fn turn_and_udp_are_opt_in_and_verify_waits_for_every_certificate() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let t = std::fs::read_to_string(root.join("roles/k8s_addons/templates/cluster.yaml.j2")).unwrap();
+        let guard = t.find("{% if livekit_turn_host").expect("el listener turn-tls no es opcional");
+        let turn = t.find("name: turn-tls").expect("sin listener turn-tls");
+        let end = t[turn..].find("{% endif %}").map(|e| turn + e).expect("el listener turn-tls no cierra su guarda");
+        assert!(guard < turn && t[turn..end].contains("mode: Passthrough"), "el TURN no pasa entero por SNI");
+        let base = ansible_tasks(&std::fs::read_to_string(root.join("roles/base/tasks/main.yml")).unwrap());
+        let udp = base
+            .iter()
+            .filter_map(|t| t.get("community.general.ufw").map(|u| (u, t)))
+            .find(|(u, _)| u.get("proto").and_then(|p| p.as_str()) == Some("udp"))
+            .expect("el firewall no abre UDP");
+        assert!(serde_yaml::to_string(&udp.1["loop"]).unwrap().contains("firewall_udp_ports"), "los puertos UDP no salen de la config");
+        let verify = ansible_tasks(&std::fs::read_to_string(root.join("playbooks/k8s-verify.yml")).unwrap());
+        assert!(
+            verify.iter().any(|t| t.get("ansible.builtin.command").and_then(|c| c.as_str()).is_some_and(|c| c.contains("wait certificate --all"))),
+            "la verificación no espera a todos los certificados"
+        );
+    }
+
     // v2: sin inventario y sin referencias. Roturas que atrapa: aceptar un
     // op:// en el manifiesto; un default en un secreto; become_password_ref en
     // v2; un nombre de secreto en minúsculas.

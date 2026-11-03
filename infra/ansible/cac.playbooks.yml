@@ -144,7 +144,21 @@ playbooks:
       - { name: dns_zone, description: "El nombre de la zona en Cloudflare (guz-studio.dev), no su Zone ID.", required: true }
       - { name: base_domain, description: "El subdominio propio del servidor dentro de la zona (gstd.guz-studio.dev), nunca la zona misma: <base_domain> y *.<base_domain> apuntarán aquí.", required: true }
       - { name: acme_email, required: true }
+      # Un Certificate wildcard por entrada (`<d>` y `*.<d>`), por DNS-01,
+      # todos en el listener https. Cada una cuelga de dns_zone. Vacío = sólo
+      # base_domain. No crea ningún registro DNS: el wildcard de la zona como
+      # certificado está bien; como registro se llevaría todo subdominio a
+      # este servidor (incidente 80e773bb).
+      - name: certificates
+        description: "Dominios con certificado wildcard, uno por zona dentro de dns_zone (gstd.guz-studio.dev, guz-studio.dev). Vacío: sólo base_domain. No crea DNS."
+        type: list
+        default: []
+      # Si se pone (turn.guz-studio.dev), el Gateway añade el listener
+      # turn-tls en el 443 (TLS sin terminar, por SNI) para el TURN de LiveKit.
+      - { name: livekit_turn_host, description: "Host del TURN de LiveKit por el 443 del Gateway; vacío = sin listener turn-tls.", default: "" }
       - { name: firewall_web_ports, default: [80, 443] }
+      # Lo que LiveKit necesita abierto en el host (media 7882, TURN 3478).
+      - { name: firewall_udp_ports, description: "Puertos UDP abiertos en el host.", type: list, default: [] }
       - { name: secret_hmac_key_path, default: /etc/cac/secret-hmac.key }
       - { name: whoami_image, default: "traefik/whoami:v1.11" }
       # El mismo menor de Kubernetes que pixel-vps (1.35) y lo demás en su

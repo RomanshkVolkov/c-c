@@ -29,9 +29,11 @@
       changed_when: false
       check_mode: false
 
-    - name: Certificado emitido
+    # Todos: hay uno por zona de `certificates`, y el de un dominio nuevo
+    # tiene que salir igual que el primero.
+    - name: Certificados emitidos
       ansible.builtin.command: >-
-        kubectl -n default wait certificate/wildcard --for=condition=Ready --timeout=300s
+        kubectl -n default wait certificate --all --for=condition=Ready --timeout=300s
       changed_when: false
       check_mode: false
 

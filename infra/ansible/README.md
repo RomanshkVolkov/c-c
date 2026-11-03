@@ -12,7 +12,15 @@ Playbooks para dejar un servidor listo desde cero, por etapas:
      MetalLB, Envoy Gateway y cert-manager (CNPG con `install_cnpg: true`).
 
 Los dos emiten un certificado wildcard `*.<base_domain>` por reto DNS en
-Cloudflare, y dejan un `whoami.<base_domain>` como prueba de humo.
+Cloudflare, y dejan un `whoami.<base_domain>` como prueba de humo. En
+Kubernetes, además, **un certificado por zona** (`certificates`: cada entrada
+es su propio `Certificate` con `<d>` y `*.<d>`, todos en el listener https),
+nunca uno compartido con una lista de hosts como el de pixel-vps: un dominio
+nuevo de la zona no toca ningún certificado, y como DNS-01 no mira a dónde
+apunta el DNS, el wildcard de una zona se emite **antes** de mudar un
+servicio. `certificates` no crea registros DNS (eso es sólo `base_domain`).
+Las rutas (`HTTPRoute`) entran desde cualquier namespace; `livekit_turn_host`
+añade el listener TLS del TURN en el 443 y `firewall_udp_ports` abre lo UDP.
 
 ## El repo tiene el cómo; cac, el qué
 
