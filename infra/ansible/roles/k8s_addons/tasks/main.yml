@@ -2,10 +2,16 @@
 # Las piezas de pixel-vps encima del clúster: Cilium (red), MetalLB (la IP
 # pública para Services), Envoy Gateway (entrada) y cert-manager (TLS). CNPG,
 # detrás de install_cnpg. Todo con helm y kubectl en el servidor.
+# Un repo que falta se añade también en el ensayo: en --check no se añadiría
+# y el chart de después no lo encontraría («repo metrics-server not found»,
+# gstd, 3-nov-2026). Es un índice en el disco de root, no un cambio del
+# clúster. Y cada chart refresca el índice antes de buscar su versión: la
+# que se fija puede ser más nueva que la caché.
 - name: Repos de helm
   kubernetes.core.helm_repository:
     name: "{{ item.name }}"
     repo_url: "{{ item.url }}"
+  check_mode: false
   loop:
     - {name: cilium, url: "https://helm.cilium.io"}
     - {name: metallb, url: "https://metallb.github.io/metallb"}
@@ -20,6 +26,7 @@
   kubernetes.core.helm:
     name: cilium
     chart_ref: cilium/cilium
+    update_repo_cache: true
     chart_version: "{{ cilium_version }}"
     release_namespace: kube-system
     wait: true
@@ -46,6 +53,7 @@
   kubernetes.core.helm:
     name: metrics-server
     chart_ref: metrics-server/metrics-server
+    update_repo_cache: true
     chart_version: "{{ metrics_server_version }}"
     release_namespace: kube-system
     wait: true
@@ -78,6 +86,7 @@
   kubernetes.core.helm:
     name: metallb
     chart_ref: metallb/metallb
+    update_repo_cache: true
     chart_version: "{{ metallb_version }}"
     release_namespace: metallb-system
     create_namespace: true
@@ -97,6 +106,7 @@
   kubernetes.core.helm:
     name: cert-manager
     chart_ref: jetstack/cert-manager
+    update_repo_cache: true
     chart_version: "{{ cert_manager_version }}"
     release_namespace: cert-manager
     create_namespace: true
@@ -112,6 +122,7 @@
   kubernetes.core.helm:
     name: cnpg
     chart_ref: cnpg/cloudnative-pg
+    update_repo_cache: true
     chart_version: "{{ cnpg_version }}"
     release_namespace: cnpg-system
     create_namespace: true
