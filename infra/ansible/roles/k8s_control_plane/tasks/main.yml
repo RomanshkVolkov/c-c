@@ -48,6 +48,14 @@
     group: "{{ ops_user }}"
     mode: "0700"
 
+# En un ensayo el directorio de arriba no se crea, y `copy` con `remote_src`
+# exige que exista: la primera vez el ensayo se salta la copia (la enseña el
+# directorio) y al correr de verdad sí la hace (gstd, 3-nov-2026).
+- name: ¿Tiene ya su .kube?
+  ansible.builtin.stat:
+    path: "/home/{{ ops_user }}/.kube"
+  register: ops_kube
+
 - name: Copiar el admin.conf al usuario de operación
   ansible.builtin.copy:
     src: /etc/kubernetes/admin.conf
@@ -56,6 +64,7 @@
     owner: "{{ ops_user }}"
     group: "{{ ops_user }}"
     mode: "0600"
+  when: ops_kube.stat.exists or not ansible_check_mode
 
 # Un parche nuevo de Kubernetes (k8s_version) no es sólo subir los paquetes:
 # el control plane corre como pods estáticos con la versión del init, y los
