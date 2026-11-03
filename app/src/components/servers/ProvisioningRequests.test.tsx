@@ -188,6 +188,50 @@ describe("una petición que se quedó sin ensayo", () => {
   });
 });
 
+// La verificación de CNPG en gstd falló por esperar poco a un Postgres sano
+// (3-nov-2026) y la petición se quedaba en rojo sin salida. Roturas que
+// atrapa: no ofrecerlo a quien la pidió o a un admin; ofrecerlo a otro
+// miembro, o en una cuyo playbook falló; mandarlo sin confirmar o a otra ruta.
+describe("volver a verificar", () => {
+  const asMe = (id: string) => useAuthStore.setState({ session: { id } } as never);
+  it("quien la pidió la vuelve a verificar confirmando", async () => {
+    asMe("u-1");
+    serve(request({ status: "verify_failed" }));
+    render(<ProvisioningRequests server={server} canDecide={false} />);
+    fireEvent.click(await screen.findByRole("button", { name: en.reverify }));
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    expect(confirmar).toHaveBeenCalledOnce();
+    expect(api.post).toHaveBeenCalledWith("/api/v1/servers/srv-1/provisioning-requests/rq-1/reverify", {}, true);
+  });
+
+  it("si no se confirma, no se manda", async () => {
+    asMe("u-1");
+    confirmar.mockResolvedValueOnce(false);
+    serve(request({ status: "verify_failed" }));
+    render(<ProvisioningRequests server={server} canDecide={false} />);
+    fireEvent.click(await screen.findByRole("button", { name: en.reverify }));
+    await waitFor(() => expect(confirmar).toHaveBeenCalled());
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it("la de otro sólo un admin, y una cuyo playbook falló nadie", async () => {
+    asMe("u-otro");
+    serve(request({ status: "verify_failed" }));
+    const { unmount } = render(<ProvisioningRequests server={server} canDecide={false} />);
+    expect(await screen.findByText(en.status.verify_failed)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: en.reverify })).toBeNull();
+    unmount();
+    render(<ProvisioningRequests server={server} canDecide />);
+    expect(await screen.findByRole("button", { name: en.reverify })).toBeTruthy();
+    cleanup();
+    asMe("u-1");
+    serve(request({ status: "failed" }));
+    render(<ProvisioningRequests server={server} canDecide />);
+    expect(await screen.findByText(en.status.failed)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: en.reverify })).toBeNull();
+  });
+});
+
 // Con todas a la vista, las descartadas y rechazadas de un simulacro empujaban
 // el playbook fuera de la pantalla. Roturas que atrapa: esconder una abierta
 // (algo espera a alguien); enseñar todas las cerradas; perder el orden; no

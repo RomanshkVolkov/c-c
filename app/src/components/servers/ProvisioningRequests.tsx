@@ -169,6 +169,9 @@ function RequestRow({
   // La descarta quien la pidió (su agente, con su token, también) o un admin;
   // el backend lo vuelve a mirar.
   const canDiscard = stale && (canDecide || (!!me && req.requestedBy === me));
+  // Volver a verificar, con la misma regla que descartar. Sólo repite la
+  // verificación; la petición la cierra lo que esa diga.
+  const canReverify = req.status === "verify_failed" && !!req.verify && (canDecide || (!!me && req.requestedBy === me));
 
   const discard = async () => {
     const ok = await confirm({
@@ -181,6 +184,24 @@ function RequestRow({
     try {
       await api.post(`/api/v1/servers/${server.id}/provisioning-requests/${req.id}/discard`, {}, true);
       toast.success(t("common:provisionRequests.discarded"));
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reverify = async () => {
+    const ok = await confirm({
+      title: t("common:provisionRequests.reverifyTitle", { verify: req.verify }),
+      description: t("common:provisionRequests.reverifyBody"),
+      confirmText: t("common:provisionRequests.reverify"),
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api.post(`/api/v1/servers/${server.id}/provisioning-requests/${req.id}/reverify`, {}, true);
       onChanged();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -365,6 +386,14 @@ function RequestRow({
       )}
       {(req.status === "verify_failed" || req.status === "failed" || req.status === "violated") && req.rollback && (
         <p className="text-xs text-destructive">{t("common:provisionRequests.rollbackHint", { rollback: req.rollback })}</p>
+      )}
+      {canReverify && (
+        <div className="flex items-center justify-between gap-2 border-t pt-2 text-xs">
+          <span className="text-muted-foreground">{t("common:provisionRequests.reverifyHint")}</span>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => void reverify()}>
+            {t("common:provisionRequests.reverify")}
+          </Button>
+        </div>
       )}
       {req.decisionNote && <p className="text-xs text-muted-foreground">{t("common:provisionRequests.decisionNote", { name: req.decidedByName ?? "", note: req.decisionNote })}</p>}
     </div>
