@@ -1745,11 +1745,17 @@ playbooks:
     // control plane son pods estáticos con la versión del init: sin
     // `kubeadm upgrade apply` queda un kubelet más nuevo que su apiserver, y
     // sin reiniciar kubelet sigue corriendo el binario viejo (gstd,
-    // 3-nov-2026). Roturas que atrapa: quitar el upgrade; correrlo sin mirar
-    // la versión que hay (cada pasada lo repetiría); no reiniciar kubelet.
+    // 3-nov-2026). Y los paquetes están retenidos: apt se niega a subirlos si
+    // no se le dice («Held packages were changed»). Roturas que atrapa: quitar
+    // el upgrade; correrlo sin mirar la versión que hay (cada pasada lo
+    // repetiría); no reiniciar kubelet; subir los paquetes sin permiso sobre
+    // la retención.
     #[test]
     fn a_new_kubernetes_patch_upgrades_the_control_plane() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let node = ansible_tasks(&std::fs::read_to_string(root.join("roles/k8s_node/tasks/main.yml")).unwrap());
+        let apt = node.iter().find_map(|t| t.get("ansible.builtin.apt")).expect("sin paquetes");
+        assert_eq!(apt["allow_change_held_packages"].as_bool(), Some(true), "apt no puede subir los paquetes retenidos");
         let tasks = ansible_tasks(&std::fs::read_to_string(root.join("roles/k8s_control_plane/tasks/main.yml")).unwrap());
         let when = |t: &serde_yaml::Value| serde_yaml::to_string(&t["when"]).unwrap_or_default();
         let upgrade = tasks

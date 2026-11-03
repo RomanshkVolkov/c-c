@@ -94,6 +94,10 @@
     state: present
     update_cache: true
     allow_downgrade: true
+    # Los cuatro están retenidos (abajo) para que apt no los suba solo; subirlos
+    # a propósito desde aquí pide decirlo, o apt se niega («Held packages were
+    # changed», gstd, 3-nov-2026). La retención se queda.
+    allow_change_held_packages: true
     lock_timeout: 180
 
 - name: Que apt no los suba solo
