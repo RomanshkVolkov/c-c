@@ -40,6 +40,15 @@ export function dueClass(v: { vencida: boolean; pronto: boolean }): string {
   return v.vencida ? "font-medium text-error" : v.pronto ? "text-warning" : "text-muted-foreground";
 }
 
+/**
+ * De qué tarea es una subtarea, para la ruta de una tarjeta: «› #289 Título».
+ * Una subtarea sale en «Mi trabajo» cuando es de alguien aunque su madre no lo
+ * sea, y sin esto parecía una tarea suelta (command-and-control-297).
+ */
+export function parentCrumb(task: Pick<OpenTask, "parentSeq" | "parentTitle">): string {
+  return task.parentSeq ? ` › #${task.parentSeq} ${task.parentTitle ?? ""}`.trimEnd() : "";
+}
+
 export default function TaskCardMini({ task, onOpen }: { task: OpenTask; onOpen: () => void }) {
   const vence = cuando(task.dueAt);
   return (
@@ -51,6 +60,7 @@ export default function TaskCardMini({ task, onOpen }: { task: OpenTask; onOpen:
         <span className="font-mono shrink-0">#{task.seq}</span>
         <span className="truncate">
           {task.spaceName} / {task.listName}
+          {parentCrumb(task)}
         </span>
       </div>
       <p className="mt-0.5 line-clamp-2 text-sm">{task.title}</p>

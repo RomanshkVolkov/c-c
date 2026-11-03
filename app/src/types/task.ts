@@ -151,6 +151,9 @@ export interface OpenTask {
   /** Done / total, so a card says what you would open it to find out. */
   subtasksDone: number;
   subtasksTotal: number;
+  /** Si es una subtarea, de qué tarea es (sólo en «Mi trabajo»). */
+  parentSeq?: number;
+  parentTitle?: string;
   /** The primary assignee's name; the card shows their initials. */
   assignee?: string;
 }

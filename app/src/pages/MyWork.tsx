@@ -23,7 +23,7 @@ import KanbanBoard from "@/components/kanban/KanbanBoard";
 import ItemCalendar from "@/components/ItemCalendar";
 import PinnedLine from "@/components/docs/PinnedLine";
 import NewTaskRow from "@/components/tasks/NewTaskRow";
-import TaskCardMini, { cuando, dueClass } from "@/components/tasks/TaskCardMini";
+import TaskCardMini, { cuando, dueClass, parentCrumb } from "@/components/tasks/TaskCardMini";
 import { useMyWorkStore, type WorkLens } from "@/store/mywork.store";
 import type { TaskView } from "@/types/task";
 import { useOrgsStore } from "@/store/orgs.store";
@@ -563,7 +563,12 @@ export default function MyWork() {
                         <span className="w-10 shrink-0 font-mono text-xs text-muted-foreground">
                           #{t.seq}
                         </span>
-                        <span className="min-w-0 flex-1 truncate text-sm">{t.title}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm">
+                          {t.title}
+                          {t.parentSeq ? (
+                            <span className="text-xs text-muted-foreground">{parentCrumb(t)}</span>
+                          ) : null}
+                        </span>
                         {/* Through the helper, never indexed: the table has
                             been missing a value the server grew before, and
                             reading a field off the resulting undefined took a

@@ -55,3 +55,24 @@ describe("el vencimiento en palabras", () => {
     expect(cuando(undefined).vencida).toBe(false);
   });
 });
+
+// command-and-control-297: una subtarea en «Mi trabajo» dice de qué es.
+describe("una subtarea dice de qué tarea es", () => {
+  it("con madre, la ruta la nombra; sin madre, nada", async () => {
+    const { parentCrumb } = await import("@/components/tasks/TaskCardMini");
+    expect(parentCrumb({ parentSeq: 289, parentTitle: "Lo que mordió" })).toBe(" › #289 Lo que mordió");
+    expect(parentCrumb({})).toBe("");
+  });
+
+  it("la tarjeta la pinta", async () => {
+    const { render, screen } = await import("@testing-library/react");
+    const { default: TaskCardMini } = await import("@/components/tasks/TaskCardMini");
+    const task = {
+      id: "t", seq: 293, title: "Migración", priority: "none", status: "pending", statusName: "", statusKind: "open",
+      listId: "l", listName: "tasks", spaceId: "s", spaceName: "C&C", updatedAt: "2026-11-03T00:00:00Z",
+      subtasksDone: 0, subtasksTotal: 0, parentSeq: 289, parentTitle: "Lo que mordió",
+    } as unknown as import("@/types/task").OpenTask;
+    render(<TaskCardMini task={task} onOpen={() => {}} />);
+    expect(screen.getByText(/C&C \/ tasks › #289 Lo que mordió/)).toBeTruthy();
+  });
+});
