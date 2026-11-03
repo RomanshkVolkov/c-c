@@ -897,11 +897,18 @@ fn read_hit_text(cfg: &Cfg, hit: &Value) -> Result<String, String> {
 }
 
 fn search_results(data: &Value) -> Value {
-    json!({
+    let mut out = json!({
         "tasks": data.get("tasks"),
         "notes": data.get("notes"),
         "docs": data.get("docs"),
-    })
+    });
+    // Nada casaba con todas las palabras y esto casa con alguna
+    // (command-and-control-294): que el agente no lo tome por la respuesta.
+    if data.get("partial").and_then(Value::as_bool) == Some(true) {
+        out["partial"] = json!(true);
+        out["note"] = json!("Nothing matched every word; these match some of them. Read them as leads, not answers, or search again with fewer words.");
+    }
+    out
 }
 
 // ─── Documentos por sección (#85, #86) ───────────────────────────────────────
@@ -6636,6 +6643,17 @@ mod tests {
             "messages": ["x"], "dms": ["y"], "people": ["z"]
         }));
         assert_eq!(out, json!({ "tasks": [1], "notes": [2], "docs": [3] }));
+    }
+
+    /// Lo que casa sólo con alguna palabra llega marcado y con su aviso
+    /// (command-and-control-294); sin la marca, ni rastro.
+    #[test]
+    fn a_partial_search_says_so() {
+        let out = search_results(&json!({ "tasks": [1], "notes": [], "docs": [], "partial": true }));
+        assert_eq!(out["partial"], json!(true));
+        assert!(out["note"].as_str().unwrap().contains("some of them"));
+        let whole = search_results(&json!({ "tasks": [1], "notes": [], "docs": [], "partial": false }));
+        assert!(whole.get("partial").is_none() && whole.get("note").is_none());
     }
 
     // ── Decisiones ──────────────────────────────────────────────────────────
