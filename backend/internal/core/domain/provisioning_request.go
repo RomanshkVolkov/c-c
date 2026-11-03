@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -100,6 +101,7 @@ const (
 	FlagTouchesAccess   = "touches-access"
 	FlagDestructive     = "destructive"
 	FlagChanges         = "changes"
+	FlagHostMismatch    = "host-mismatch"
 )
 
 var (
@@ -393,4 +395,32 @@ func RecapChanged(summary string) int {
 		return -1
 	}
 	return total
+}
+
+// EvaluateHost: si la config dice que el servidor está en otra IP de la que
+// usa cac para conectarse. Ansible entra por el host del servidor en cac
+// (`ServerConnection.Host`), no por `public_ip`, que es lo que los roles usan
+// para anunciarse (swarm, DNS, kubeadm). gstd estaba dado de alta con la IP
+// equivocada y nadie lo dijo (incidente e51af81b, command-and-control-299).
+//
+// Ámbar, no roja: hay casos buenos (registrado por la IP privada detrás de un
+// NAT). El detalle enseña los dos valores; si es así a propósito, poner
+// `ansible_host` con la IP por la que se entra lo calla.
+//
+// No compara un host registrado por nombre: saber a qué IP apunta un DNS es
+// resolverlo, y eso no es cosa de aquí.
+func EvaluateHost(serverHost string, vars map[string]any) *RiskFlag {
+	ip, _ := vars["public_ip"].(string)
+	ip = strings.TrimSpace(ip)
+	host := strings.TrimSpace(serverHost)
+	if ip == "" || net.ParseIP(host) == nil {
+		return nil
+	}
+	if via, _ := vars["ansible_host"].(string); strings.TrimSpace(via) == ip {
+		return nil
+	}
+	if ip == host {
+		return nil
+	}
+	return &RiskFlag{Code: FlagHostMismatch, Level: FlagAmber, Detail: "public_ip=" + ip + " host=" + host}
 }

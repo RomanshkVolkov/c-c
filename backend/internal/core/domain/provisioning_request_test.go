@@ -213,3 +213,32 @@ func TestALongRehearsalLogKeepsItsEnd(t *testing.T) {
 		t.Errorf("un log corto se tocó: %q", short.LogTail)
 	}
 }
+
+// Roturas que atrapa: no avisar cuando son distintas, avisar cuando
+// `ansible_host` ya dice por dónde se entra, ponerla roja, comparar un host
+// registrado por nombre, o reventar con un `public_ip` que no es texto.
+func TestAPublicIPThatIsNotTheHostIsFlagged(t *testing.T) {
+	cases := []struct {
+		name string
+		host string
+		vars map[string]any
+		want bool
+	}{
+		{"iguales", "1.2.3.4", map[string]any{"public_ip": "1.2.3.4"}, false},
+		{"distintas", "1.2.3.5", map[string]any{"public_ip": "1.2.3.4"}, true},
+		{"ansible_host la iguala", "10.0.0.5", map[string]any{"public_ip": "1.2.3.4", "ansible_host": "1.2.3.4"}, false},
+		{"sin public_ip", "1.2.3.4", map[string]any{}, false},
+		{"public_ip no es texto", "1.2.3.4", map[string]any{"public_ip": 42}, false},
+		{"host por nombre", "gstd.guz-studio.dev", map[string]any{"public_ip": "1.2.3.4"}, false},
+	}
+	for _, c := range cases {
+		f := EvaluateHost(c.host, c.vars)
+		if (f != nil) != c.want {
+			t.Errorf("%s: %+v", c.name, f)
+			continue
+		}
+		if f != nil && (f.Code != FlagHostMismatch || f.Level != FlagAmber || f.Detail != "public_ip=1.2.3.4 host=1.2.3.5") {
+			t.Errorf("%s: %+v", c.name, f)
+		}
+	}
+}

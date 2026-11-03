@@ -373,3 +373,42 @@ func TestARequestLeftWithoutItsCheckIsDiscarded(t *testing.T) {
 	}
 	expect(t, p.discard(checked.ID, person()), http.StatusConflict, "provisioning-request-state", "descartar una ensayada")
 }
+
+// gstd estaba dado de alta con la IP equivocada y Ansible entra por el host
+// del servidor, no por `public_ip`: nadie lo dijo (incidente e51af81b). El
+// ensayo lo dice con una bandera ámbar, y una bandera quita la
+// pre-autorización (command-and-control-299).
+//
+// Roturas que atrapa: no cargar la config en el ensayo, no quitar la
+// pre-autorización, o leer la config de ahora en vez de la versión pedida.
+func TestACheckSaysWhenPublicIPIsNotTheHost(t *testing.T) {
+	p, cleanup := newProtocol(t)
+	defer cleanup()
+	admin := claims("u-ana", "org-1", domain.OrgRoleAdmin)
+	// v2: otra IP; v3: la del host (10.0.0.1).
+	for _, body := range []string{`{"vars":{"public_ip":"10.9.9.9"}}`, `{"vars":{"public_ip":"10.0.0.1"}}`} {
+		if rec := saveConfig(p.cfg, "srv-1", body, admin); rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+			t.Fatalf("guardar la config → %d: %s", rec.Code, rec.Body.String())
+		}
+	}
+	flagged := func(got domain.ProvisioningRequestResponse) bool {
+		for _, f := range got.Flags {
+			if f.Code == domain.FlagHostMismatch {
+				return f.Level == domain.FlagAmber && strings.Contains(f.Detail, "10.9.9.9") && strings.Contains(f.Detail, "10.0.0.1")
+			}
+		}
+		return false
+	}
+
+	req := p.ask(`{"playbook":"test","risk":"read","configSeq":2}`)
+	got := decode[domain.ProvisioningRequestResponse](t, p.check(req.ID, domain.ProvisioningCheck{Hosts: []string{"tds"}, Ok: 3}))
+	if !flagged(got) || got.Status != domain.ProvisioningRequestAwaiting || got.AutoApproved {
+		t.Errorf("con public_ip distinta del host: flags %+v, %s auto=%v", got.Flags, got.Status, got.AutoApproved)
+	}
+
+	req = p.ask(`{"playbook":"test","risk":"read","configSeq":3}`)
+	got = decode[domain.ProvisioningRequestResponse](t, p.check(req.ID, domain.ProvisioningCheck{Hosts: []string{"tds"}, Ok: 3}))
+	if flagged(got) || got.Status != domain.ProvisioningRequestApproved {
+		t.Errorf("con public_ip igual al host: flags %+v, %s", got.Flags, got.Status)
+	}
+}

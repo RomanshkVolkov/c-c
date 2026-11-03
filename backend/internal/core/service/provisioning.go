@@ -175,6 +175,17 @@ func (s *ProvisioningService) SubmitCheck(server *domain.ServerResponse, id stri
 	}
 	check = domain.BoundCheck(check)
 	flags, auto := domain.EvaluateCheck(p.Risk, p.Playbook, check)
+	// La config de la versión pedida, no la de ahora: es la que se ensayó. Un
+	// aviso, no una puerta: si no se puede leer, el ensayo entra igual (una
+	// petición que se queda «ensayando» es justo lo que mordió en la 283).
+	if s.configs != nil && p.ConfigSeq > 0 {
+		if eff, err := s.configs.Effective(server, p.ConfigSeq); err == nil {
+			if f := domain.EvaluateHost(server.Host, eff.Vars); f != nil {
+				flags = append(flags, *f)
+				auto = false
+			}
+		}
+	}
 	status := domain.ProvisioningRequestAwaiting
 	var grant *time.Time
 	if auto {
