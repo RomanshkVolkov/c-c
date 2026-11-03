@@ -268,8 +268,16 @@ export default function ServerProvision() {
       live.backendRunId = null;
       finished();
       if (backendRunId) {
+        // Rust no llegó a lanzar Ansible (1Password no contestó, el venv…):
+        // el servidor no se tocó. Se dice (`notStarted`) para que cac devuelva
+        // la petición a «aprobada» con su misma autorización, en vez de
+        // gastarla y obligar a ensayar y aprobar otra vez (jose, 3-nov-2026).
         await api
-          .patch(`/api/v1/servers/${server.id}/provisioning-runs/${backendRunId}`, { status: "failed", summary: String(e), logTail: "" }, true)
+          .patch(
+            `/api/v1/servers/${server.id}/provisioning-runs/${backendRunId}`,
+            { status: "failed", summary: String(e), logTail: "", notStarted: true },
+            true,
+          )
           .catch(() => {});
         void loadHistory(server.id);
       }

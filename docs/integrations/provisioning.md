@@ -121,6 +121,20 @@ configuración ni ningún token cambia eso. Si aun así una ejecución autorizad
 como lectura cambia algo, su recap la delata al cerrar y la petición queda
 `violated`.
 
+**Una ejecución que no llega a arrancar Ansible no gasta la autorización.**
+Si la app o la CLI mueren antes de lanzar `ansible-playbook` (1Password no
+contestó, el venv, el inventario), el servidor no se tocó: cierran la
+ejecución con `notStarted` y cac devuelve la petición a `approved` con la
+misma autorización (o la deja «verificando» si era la verificación), para
+correrla otra vez sin ensayar ni aprobar de nuevo. Antes, un rechazo de
+1Password en el primer segundo obligaba a rehacer todo (jose, 3-nov-2026). Y
+`op read` insiste tres veces, con dos segundos entre medias, cuando 1Password
+rechaza la conexión: suele contestar a la segunda. Lo vigilan
+`handler.TestARunThatNeverStartedKeepsTheGrant`,
+`provision_cli::tests::a_run_that_never_started_says_so`,
+`op_retry_tests::a_refused_1password_is_asked_again_but_nothing_else_is` y
+`ServerProvision.test.tsx` («una que muere antes de arrancar Ansible»).
+
 **En la app también.** Con un manifiesto v2, «Aplicar» ya no aplica: ensaya y
 deja la petición, igual que un agente. Una persona no se salta el protocolo
 por estar en persona; sólo la aprobación tiene que ser suya. (Un manifiesto

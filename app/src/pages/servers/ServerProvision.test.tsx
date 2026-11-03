@@ -283,6 +283,41 @@ describe("correr una autorizada", () => {
   }
   const started = () => api.post.mock.calls.filter((c) => String(c[0]).endsWith("/provisioning-runs")).map((c) => c[1].playbook);
 
+  // Una autorizada cuyo Rust muere antes de lanzar Ansible (1Password no
+  // contestó) no tocó el servidor: se cierra como «no arrancó» para que cac
+  // devuelva la petición a aprobada con su autorización, en vez de gastarla
+  // (jose, 3-nov-2026). Roturas que atrapa: cerrarla como un fallo normal
+  // (sin `notStarted`); o marcar «no arrancó» un fallo con Ansible corrido.
+  it("una que muere antes de arrancar Ansible se cierra como «no arrancó»", async () => {
+    serveV2(req());
+    invoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "ansible_manifest": return v2;
+        case "ansible_tools": return { platformSupported: true, reason: "", ansiblePlaybook: "/p/.venv/bin/ansible-playbook", op: "/usr/bin/op" };
+        case "ansible_plan_gaps": return { vars: [], secrets: [] };
+        case "ansible_run_with_config": throw new Error("cloudflare_dns_token: 1Password refused the connection");
+      }
+      throw new Error(`comando inesperado ${cmd}`);
+    });
+    render(<ServerProvision />);
+    fireEvent.click(await screen.findByRole("button", { name: /^(correr ahora|run now)$/i }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+    expect(api.patch.mock.calls[0][0]).toBe("/api/v1/servers/srv-1/provisioning-runs/run-cac-1");
+    expect(api.patch.mock.calls[0][1]).toMatchObject({ status: "failed", notStarted: true });
+    expect(String(api.patch.mock.calls[0][1].summary)).toContain("1Password");
+  });
+
+  it("una que corrió y falló no dice que no arrancó", async () => {
+    serveV2(req());
+    render(<ServerProvision />);
+    fireEvent.click(await screen.findByRole("button", { name: /^(correr ahora|run now)$/i }));
+    await waitFor(() => expect(channels.length).toBe(1));
+    act(() => channels[0].onmessage!({ event: "exit", data: { code: 2, cancelled: false } }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+    expect(api.patch.mock.calls[0][1]).toMatchObject({ status: "failed", exitCode: 2 });
+    expect(api.patch.mock.calls[0][1].notStarted).toBeFalsy();
+  });
+
   // Rotura que atrapa: arrancar la verificación antes de que cac haya cerrado
   // la ejecución. Cerrarla es lo que pasa la petición a «verificando»; si la
   // verificación llega antes, el backend contesta 409 y la petición se queda

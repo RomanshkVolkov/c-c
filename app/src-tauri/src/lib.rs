@@ -163,7 +163,39 @@ fn exe_link_says_deleted(link: Option<&std::path::Path>) -> bool {
 /// gstd). Si la de por defecto contesta que no está, se prueba en las demás, y
 /// la que acierta se recuerda para esa bóveda.
 fn op_read(reference: &str) -> Result<String, String> {
-    op_read_across(reference, op_vault_accounts(), op_read_in, op_accounts)
+    retry_while_refused(
+        || op_read_across(reference, op_vault_accounts(), op_read_in, op_accounts),
+        OP_REFUSED_ATTEMPTS,
+        std::time::Duration::from_secs(2),
+    )
+}
+
+/// Cuántas veces se insiste cuando 1Password rechaza la conexión.
+const OP_REFUSED_ATTEMPTS: u32 = 3;
+
+/// 1Password rechaza a veces la primera conexión (la app aún no ha abierto
+/// el aviso de aprobación, o acaba de reiniciarse) y a la siguiente contesta:
+/// el 3-nov-2026 una ejecución aprobada murió a los 0,2 s por eso y hubo que
+/// rehacer ensayo y aprobación. Se insiste unas veces, con una pausa, antes
+/// de rendirse; cualquier otro error (sesión caducada, ítem que no existe,
+/// `op` sin instalar) se devuelve a la primera, que insistir no lo arregla.
+fn retry_while_refused(
+    mut read: impl FnMut() -> Result<String, String>,
+    attempts: u32,
+    wait: std::time::Duration,
+) -> Result<String, String> {
+    let mut last = String::new();
+    for i in 0..attempts.max(1) {
+        match read() {
+            Ok(v) => return Ok(v),
+            Err(e) if e.contains("refused the connection") && i + 1 < attempts => {
+                last = e;
+                std::thread::sleep(wait);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last)
 }
 
 /// El cuerpo de `op_read`, con quién lee y quién lista las cuentas por fuera
@@ -1620,6 +1652,55 @@ mod keychain_tests {
                 .is_none(),
             "keyring está usando su almacén de mentira: faltan las features de plataforma"
         );
+    }
+}
+
+#[cfg(test)]
+mod op_retry_tests {
+    use super::*;
+
+    // Roturas que atrapa: no insistir cuando 1Password rechaza la conexión;
+    // insistir con cualquier otro error (una sesión caducada no se arregla
+    // esperando); insistir sin tope.
+    #[test]
+    fn a_refused_1password_is_asked_again_but_nothing_else_is() {
+        let wait = std::time::Duration::ZERO;
+        let mut calls = 0;
+        let out = retry_while_refused(
+            || {
+                calls += 1;
+                if calls < 3 {
+                    Err("cloudflare_dns_token: 1Password refused the connection. Unlock…".to_string())
+                } else {
+                    Ok("tok".to_string())
+                }
+            },
+            3,
+            wait,
+        );
+        assert_eq!((out.as_deref(), calls), (Ok("tok"), 3), "a la tercera contesta y se toma");
+
+        let mut calls = 0;
+        let out = retry_while_refused(
+            || {
+                calls += 1;
+                Err("1Password session expired. Run `op signin`".to_string())
+            },
+            3,
+            wait,
+        );
+        assert!(out.is_err() && calls == 1, "otro error no se reintenta ({calls} intentos)");
+
+        let mut calls = 0;
+        let out = retry_while_refused(
+            || {
+                calls += 1;
+                Err("1Password refused the connection".to_string())
+            },
+            3,
+            wait,
+        );
+        assert!(out.unwrap_err().contains("refused") && calls == 3, "se rinde tras los intentos ({calls})");
     }
 }
 

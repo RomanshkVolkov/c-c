@@ -354,23 +354,31 @@ fn execute(ctx: &Context, effective: &Value, playbook_id: &str, grant: &str, seq
         }),
     )?;
     let backend_run = started["id"].as_str().unwrap_or_default().to_string();
-    let finish = |status: &str, code: Option<i32>, summary: String, tail: String| {
+    let finish = |body: Value| {
         let _ = api_patch(
             &ctx.c,
             &format!("/api/v1/servers/{}/provisioning-runs/{}", urlencode(&ctx.server_id), urlencode(&backend_run)),
-            json!({ "status": status, "exitCode": code, "summary": summary, "logTail": tail }),
+            body,
         );
     };
     let (code, cancelled, l) = match play(spec, true) {
         Ok(r) => r,
         Err(e) => {
-            finish("failed", None, e.clone(), String::new());
+            finish(finish_body("failed", None, e.clone(), String::new(), true));
             return Err(e);
         }
     };
     let status = if cancelled { "cancelled" } else if code == Some(0) { "succeeded" } else { "failed" };
-    finish(status, code, play_recap(&l), log_tail(&l, 200));
+    finish(finish_body(status, code, play_recap(&l), log_tail(&l, 200), false));
     Ok(status.to_string())
+}
+
+/// El cierre de una ejecución. `not_started`: Ansible nunca arrancó (1Password
+/// no contestó, el venv, el inventario), así que el servidor no se tocó y cac
+/// devuelve la petición a `approved` con su misma autorización, en vez de
+/// gastarla y obligar a rehacer ensayo y aprobación (jose, 3-nov-2026).
+fn finish_body(status: &str, code: Option<i32>, summary: String, tail: String, not_started: bool) -> Value {
+    json!({ "status": status, "exitCode": code, "summary": summary, "logTail": tail, "notStarted": not_started })
 }
 
 fn print_request(r: &Value) {
@@ -575,6 +583,25 @@ mod tests {
 
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().map(|x| x.to_string()).collect()
+    }
+
+    // Una ejecución que muere antes de lanzar Ansible (1Password no contestó)
+    // se cierra diciendo que no arrancó, y cac devuelve la petición a
+    // `approved` con su autorización. Una que corrió, no. Roturas que atrapa:
+    // perder `notStarted` del cierre; mandarlo también cuando Ansible corrió.
+    #[test]
+    fn a_run_that_never_started_says_so() {
+        let dead = finish_body("failed", None, "cloudflare_dns_token: 1Password refused the connection".into(), String::new(), true);
+        assert_eq!(dead["notStarted"], json!(true));
+        assert_eq!(dead["status"], json!("failed"));
+        let ran = finish_body("failed", Some(2), "gstd : ok=3 failed=1".into(), "…".into(), false);
+        assert_eq!(ran["notStarted"], json!(false));
+        assert_eq!(ran["exitCode"], json!(2));
+        // Y el camino que lo manda es el del error al lanzar, no el del exit.
+        let src = include_str!("provision_cli.rs");
+        let launch_err = src.find("Err(e) => {\n            finish(finish_body(\"failed\", None, e.clone(), String::new(), true));").expect("el fallo al lanzar no dice notStarted");
+        let exit = src.find("finish(finish_body(status, code, play_recap(&l), log_tail(&l, 200), false));").expect("el cierre normal manda notStarted");
+        assert!(launch_err < exit);
     }
 
     #[test]
