@@ -1720,6 +1720,101 @@ playbooks:
         assert!(fixed, "cert-manager {tag} no puede limpiar el reto DNS en Cloudflare (cert-manager#7540)");
     }
 
+    // Hasta el 3-nov-2026 sólo root leía el admin.conf: un `ssh gstd kubectl`
+    // como el usuario de operación contestaba «connection refused» en
+    // localhost:8080 y operar el clúster exigía sudo. Roturas que atrapa:
+    // quitar la copia del kubeconfig al usuario de operación; dejársela de
+    // otro dueño o legible por el grupo.
+    #[test]
+    fn the_ops_user_runs_kubectl_without_sudo() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let tasks = ansible_tasks(&std::fs::read_to_string(root.join("roles/k8s_control_plane/tasks/main.yml")).unwrap());
+        let copy = tasks
+            .iter()
+            .filter_map(|t| t.get("ansible.builtin.copy"))
+            .find(|c| {
+                c.get("src").and_then(|s| s.as_str()) == Some("/etc/kubernetes/admin.conf")
+                    && c.get("dest").and_then(|d| d.as_str()).is_some_and(|d| d.contains("{{ ops_user }}"))
+            })
+            .expect("el usuario de operación no recibe el admin.conf");
+        assert_eq!(copy["owner"].as_str(), Some("{{ ops_user }}"), "el kubeconfig no es del usuario de operación");
+        assert_eq!(copy["mode"].as_str(), Some("0600"), "el kubeconfig lo lee alguien más");
+    }
+
+    // Sin una StorageClass por defecto un PVC se queda Pending y CNPG no
+    // arranca; sin metrics-server `kubectl top` no contesta (pixel-vps,
+    // 3-nov-2026). Roturas que atrapa: quitar el provisioner o dejar de
+    // marcarlo por defecto; quitar metrics-server; una versión sin fijar en
+    // el manifiesto.
+    #[test]
+    fn the_cluster_has_default_storage_and_metrics() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let m = parse_manifest(&std::fs::read_to_string(root.join(MANIFEST_FILE)).unwrap()).unwrap();
+        let k8s = m.playbooks.iter().find(|p| p.id == "k8s").unwrap();
+        for var in ["local_path_provisioner_version", "metrics_server_version"] {
+            assert!(k8s.vars.iter().any(|v| v.name == var && v.default.is_some()), "k8s no fija {var}");
+        }
+        let tasks = ansible_tasks(&std::fs::read_to_string(root.join("roles/k8s_addons/tasks/main.yml")).unwrap());
+        let command = |t: &serde_yaml::Value| t.get("ansible.builtin.command").and_then(|c| c.as_str()).unwrap_or("").to_string();
+        assert!(
+            tasks.iter().any(|t| t.get("ansible.builtin.get_url").and_then(|g| g.get("url")).and_then(|u| u.as_str()).is_some_and(|u| {
+                u.contains("rancher/local-path-provisioner/{{ local_path_provisioner_version }}/")
+            })),
+            "el provisioner no se baja fijado a su versión"
+        );
+        assert!(tasks.iter().any(|t| command(t).contains("local-path-storage.yaml")), "el provisioner no se aplica");
+        assert!(
+            tasks.iter().any(|t| {
+                let c = command(t);
+                c.contains("patch storageclass local-path") && c.contains(r#""storageclass.kubernetes.io/is-default-class":"true""#)
+            }),
+            "local-path no es la StorageClass por defecto"
+        );
+        let metrics = tasks
+            .iter()
+            .filter_map(|t| t.get("kubernetes.core.helm"))
+            .find(|h| h.get("name").and_then(|n| n.as_str()) == Some("metrics-server"))
+            .expect("sin metrics-server");
+        assert_eq!(metrics["chart_version"].as_str(), Some("{{ metrics_server_version }}"));
+    }
+
+    // Cada addon soporta una lista cerrada de menores de Kubernetes: las
+    // tablas de compatibilidad río arriba, leídas el 3-nov-2026 (Cilium
+    // 1.19: 1.32–1.35; Envoy Gateway 1.7 y 1.8: 1.32–1.35, 1.9: 1.33–1.36;
+    // cert-manager 1.21: 1.33–1.36). Roturas que atrapa: subir k8s a un menor
+    // que un addon no soporta; subir un addon a una línea que no soporta este
+    // k8s, o a una que no está en la tabla (entonces se lee su tabla y se
+    // añade la fila); y helm 4, con el que kubernetes.core.helm no está
+    // probado.
+    #[test]
+    fn every_addon_supports_the_kubernetes_minor() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let m = parse_manifest(&std::fs::read_to_string(root.join(MANIFEST_FILE)).unwrap()).unwrap();
+        let k8s = m.playbooks.iter().find(|p| p.id == "k8s").unwrap();
+        let default = |name: &str| -> String {
+            k8s.vars.iter().find(|v| v.name == name).and_then(|v| v.default.as_ref()).and_then(|d| d.as_str()).unwrap_or_else(|| panic!("sin {name}")).to_string()
+        };
+        let minor = default("k8s_minor");
+        assert!(default("k8s_version").starts_with(&format!("{minor}.")), "k8s_version no es de la línea k8s_minor");
+        let line = |v: &str| v.trim_start_matches('v').splitn(3, '.').take(2).collect::<Vec<_>>().join(".");
+        let supported: &[(&str, &str, &[&str])] = &[
+            ("cilium_version", "1.19", &["1.32", "1.33", "1.34", "1.35"]),
+            ("envoy_gateway_version", "1.7", &["1.32", "1.33", "1.34", "1.35"]),
+            ("envoy_gateway_version", "1.8", &["1.32", "1.33", "1.34", "1.35"]),
+            ("envoy_gateway_version", "1.9", &["1.33", "1.34", "1.35", "1.36"]),
+            ("cert_manager_version", "1.21", &["1.33", "1.34", "1.35", "1.36"]),
+        ];
+        for var in ["cilium_version", "envoy_gateway_version", "cert_manager_version"] {
+            let v = default(var);
+            let row = supported
+                .iter()
+                .find(|(name, l, _)| *name == var && *l == line(&v))
+                .unwrap_or_else(|| panic!("{var} {v}: su línea no está en la tabla; lee su compatibilidad y añade la fila"));
+            assert!(row.2.contains(&minor.as_str()), "{var} {v} no soporta Kubernetes {minor}");
+        }
+        assert!(default("helm_version").starts_with("v3."), "kubernetes.core.helm no está probado con helm 4");
+    }
+
     // v2: sin inventario y sin referencias. Roturas que atrapa: aceptar un
     // op:// en el manifiesto; un default en un secreto; become_password_ref en
     // v2; un nombre de secreto en minúsculas.

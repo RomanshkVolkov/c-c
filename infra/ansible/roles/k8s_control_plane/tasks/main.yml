@@ -37,6 +37,26 @@
     remote_src: true
     mode: "0600"
 
+# El usuario de operación también opera el clúster, sin sudo, como en
+# pixel-vps: hasta el 3-nov-2026 sólo root leía el admin.conf y un
+# `ssh gstd kubectl …` contestaba «connection refused» en localhost:8080.
+- name: kubectl del usuario de operación
+  ansible.builtin.file:
+    path: "/home/{{ ops_user }}/.kube"
+    state: directory
+    owner: "{{ ops_user }}"
+    group: "{{ ops_user }}"
+    mode: "0700"
+
+- name: Copiar el admin.conf al usuario de operación
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "/home/{{ ops_user }}/.kube/config"
+    remote_src: true
+    owner: "{{ ops_user }}"
+    group: "{{ ops_user }}"
+    mode: "0600"
+
 # Un solo nodo: el control plane también corre cargas.
 - name: Quitar el taint del control plane
   ansible.builtin.shell:

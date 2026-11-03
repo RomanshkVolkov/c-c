@@ -11,6 +11,7 @@
     - {name: metallb, url: "https://metallb.github.io/metallb"}
     - {name: jetstack, url: "https://charts.jetstack.io"}
     - {name: cnpg, url: "https://cloudnative-pg.github.io/charts"}
+    - {name: metrics-server, url: "https://kubernetes-sigs.github.io/metrics-server"}
 
 # VXLAN y con kube-proxy, como pixel-vps; el pool de pods es pod_cidr (ver
 # los defaults de `k8s` en cac.playbooks.yml: aquí no se solapa con la red de
@@ -37,6 +38,41 @@
 - name: El nodo Ready (con red)
   ansible.builtin.command: kubectl wait --for=condition=Ready node --all --timeout=300s
   changed_when: false
+
+# El kubelet de un nodo kubeadm sirve su certificado con el nombre del nodo,
+# no firmado por la CA del clúster: metrics-server lo acepta así, como en
+# cualquier kubeadm de un nodo.
+- name: metrics-server {{ metrics_server_version }}
+  kubernetes.core.helm:
+    name: metrics-server
+    chart_ref: metrics-server/metrics-server
+    chart_version: "{{ metrics_server_version }}"
+    release_namespace: kube-system
+    wait: true
+    values:
+      args: [--kubelet-insecure-tls]
+
+# Almacenamiento por defecto, como pixel-vps (`local-path`): sin una
+# StorageClass por defecto un PVC se queda Pending y nada con disco arranca.
+# El manifiesto va fijado a su versión y pasa por el servidor; la clase por
+# defecto la pone el patch, porque el manifiesto no la marca.
+- name: Manifiesto de local-path-provisioner {{ local_path_provisioner_version }}
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/rancher/local-path-provisioner/{{ local_path_provisioner_version }}/deploy/local-path-storage.yaml"
+    dest: /etc/cac/local-path-storage.yaml
+    mode: "0600"
+
+- name: Aplicar local-path-provisioner
+  ansible.builtin.command: kubectl apply --server-side --force-conflicts -f /etc/cac/local-path-storage.yaml
+  register: local_path_apply
+  changed_when: "'serverside-applied' in local_path_apply.stdout and 'unchanged' not in local_path_apply.stdout"
+
+- name: local-path es la StorageClass por defecto
+  ansible.builtin.command: >-
+    kubectl patch storageclass local-path
+    -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+  register: local_path_default
+  changed_when: "'(no change)' not in local_path_default.stdout"
 
 - name: MetalLB {{ metallb_version }}
   kubernetes.core.helm:

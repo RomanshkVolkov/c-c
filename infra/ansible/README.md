@@ -103,11 +103,15 @@ con un alias de tu `~/.ssh/config`.
   80/443 y su propio containerd. Se pasa de uno a otro con el teardown.
 - **El 6443 no se abre**: el clúster se opera con `kubectl` en el servidor, por
   SSH, como pixel-vps.
-- **Versiones de Kubernetes y addons = las de pixel-vps** (los defaults de
-  `k8s` en `cac.playbooks.yml`, que pasan a su plantilla),
-  para ensayar aquí sus upgrades antes que en producción. Diferencia a
-  propósito: el pool de pods es `10.244.0.0/16`; el de pixel-vps (`10.0.0.0/8`,
-  el de Cilium por defecto) se solapa con la red de Services.
+- **El mismo menor de Kubernetes que pixel-vps (1.35) y los addons en su
+  última versión** (los defaults de `k8s` en `cac.playbooks.yml`, que pasan a
+  su plantilla): gstd va por delante y ensaya lo que después se sube en
+  pixel-vps. Cada addon soporta una lista cerrada de menores de k8s; la tabla
+  vive en la prueba `ansible::tests::every_addon_supports_the_kubernetes_minor`
+  y una versión fuera de ella no compila la app. Diferencias a propósito: el
+  pool de pods es `10.244.0.0/16` (el de pixel-vps, `10.0.0.0/8`, se solapa con
+  la red de Services); el usuario de operación tiene kubeconfig y opera sin
+  sudo; hay `StorageClass` por defecto (`local-path`) y `metrics-server`.
 - **Los secrets de Swarm llevan su versión en el nombre** (HMAC del valor con
   una clave que sólo vive en el servidor, `/etc/cac/secret-hmac.key`): rotar el
   token es cambiarlo en 1Password y volver a correr `make swarm SERVER=…`.
