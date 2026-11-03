@@ -34,12 +34,22 @@ def summary(data, repo):
             lines.append(line)
         if len(tasks) > MAX_TASKS:
             lines.append(f"… y {len(tasks) - MAX_TASKS} más (get_context).")
+    # Las que cac vio salir enteras en una release: la sesión las cierra
+    # (command-and-control-295). cac no las mueve.
+    shipped = [t for t in tasks if t.get("shipped")]
+    if shipped:
+        lines.append("Ya salieron (ciérralas con status done y un comentario):")
+        for t in shipped:
+            lines.append(f"- {t.get('ref') or '#' + str(t.get('seq'))} · {t['shipped'].get('tag', '')}")
     traps = data.get("openIncidents") or []
     if traps:
         lines.append(f"Trampas abiertas ({len(traps)}):")
         for i in traps[:MAX_TRAPS]:
             where = ", ".join([s.get("name", "") for s in i.get("servers") or []] + list(i.get("areas") or []))
-            lines.append(f"- {where or 'sin servidor'} · {i.get('title', '')} ({i.get('id')})")
+            line = f"- {where or 'sin servidor'} · {i.get('title', '')} ({i.get('id')})"
+            if i.get("shipped"):
+                line += f" · arreglo publicado en {i['shipped'].get('tag', '')}"
+            lines.append(line)
     lines.append(
         "Para el mapa entero: get_context sin argumentos. Para una pregunta: search con expand. "
         "Antes de tocar un servidor o un área: list_incidents. Lo que te muerda: record_incident. "

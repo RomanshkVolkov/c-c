@@ -2139,7 +2139,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_context",
-            "description": "START HERE when you begin work in a repository. One call returns what the team knows about its project, without any bodies: the space's tree (folders and lists, with `path`; a list with `projectId` belongs to a client), for each node with a document the headings of its tabs (overview, runbook, decisions, links; up to level 3, with their size in `chars`), its subpages and its decisions still in force (id and title; the body with get_decision), the markdown files of the repos linked to the space, and the tasks already in progress — each with its `ref`, who is on it (`assignees`) and its `handoff`: where it was left, by whom and when, so you don't open every task to find out. `truncated` names anything cut for size.\n\nWith no arguments it reads the git remote of the folder you are working in and finds the space that GitHub repo is linked to. Then read only the sections you need: get_doc with kind, ownerId (the node's id), tab and section (a heading's text); get_doc_page for a subpage; get_repo_doc for a repo file.",
+            "description": "START HERE when you begin work in a repository. One call returns what the team knows about its project, without any bodies: the space's tree (folders and lists, with `path`; a list with `projectId` belongs to a client), for each node with a document the headings of its tabs (overview, runbook, decisions, links; up to level 3, with their size in `chars`), its subpages and its decisions still in force (id and title; the body with get_decision), the markdown files of the repos linked to the space, and the tasks already in progress — each with its `ref`, who is on it (`assignees`) and its `handoff`: where it was left, by whom and when, so you don't open every task to find out. A task in progress whose linked commits have all gone out in a GitHub release carries `shipped` {tag, at}: move it to done with a comment saying so (cac marks it; it never moves it). An incident in a node's `incidents` carries `shipped` the same way: tell the user its fix is out. `truncated` names anything cut for size.\n\nWith no arguments it reads the git remote of the folder you are working in and finds the space that GitHub repo is linked to. Then read only the sections you need: get_doc with kind, ownerId (the node's id), tab and section (a heading's text); get_doc_page for a subpage; get_repo_doc for a repo file.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2188,7 +2188,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_task",
-            "description": "Full detail of one task, with its `ref` — how to name it in a commit message, branch or PR so cac links it by itself: its space key and number (`proteus-12`), or a client's folio (`acme-7`): its `handoff` (where the last session left it: read this before the thread), what it waits for (`blockedBy`, each with whether it is still open), the decisions that apply to it (`decisions`; one superseded says by which, read with get_decision), its markdown description, status, priority, tags, assignees, attachments, the comment thread (people and agents only: GitHub's commit notes are left out, they are the same commits as `git.commits`), its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…). get_board does not list subtasks; it only shows how many are done.",
+            "description": "Full detail of one task, with its `ref` — how to name it in a commit message, branch or PR so cac links it by itself: its space key and number (`proteus-12`), or a client's folio (`acme-7`): its `handoff` (where the last session left it: read this before the thread), what it waits for (`blockedBy`, each with whether it is still open), the decisions that apply to it (`decisions`; one superseded says by which, read with get_decision), its markdown description, status, priority, tags, assignees, attachments, the comment thread (people and agents only: GitHub's commit notes are left out, they are the same commits as `git.commits`), its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…); each commit carries `releasedIn` {tag, at, url} once it went out in a GitHub release of its repo. get_board does not list subtasks; it only shows how many are done.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "id": { "type": "string", "description": "The task id, or its ref as people write it: `proteus-12` (space key and number) or a client's folio `acme-7`. `cac#12` does not resolve: a number without its space." } },
@@ -7432,6 +7432,27 @@ mod tests {
         let (cfg, _) = fake_cac(|_, _, _| json!({ "task": { "seq": 1 }, "comments": [{ "id": "c1", "kind": "user" }] }));
         let got = call_tool(&cfg, "get_task", &json!({ "id": "t1" })).unwrap();
         assert!(got.get("commitNotesOmitted").is_none());
+    }
+
+    /// Lo que cac sabe de una release viaja tal cual: `releasedIn` en cada
+    /// commit de `get_task` y `shipped` en lo que está en curso del mapa
+    /// (command-and-control-295). Roturas que detecta: que alguien «limpie»
+    /// `git` o rehaga `inProgress` y tire el campo.
+    #[test]
+    fn releases_ride_through_get_task_and_get_context() {
+        let (cfg, _) = fake_cac(|_, p, _| {
+            if p.starts_with("/api/v1/context") {
+                json!({ "space": { "id": "sp", "key": "cc" },
+                        "inProgress": [{ "id": "t1", "seq": 291, "ref": "cc-291", "shipped": { "tag": "v1.9.1", "at": "2026-11-03T00:00:00Z" } }] })
+            } else {
+                json!({ "task": { "id": "t1", "seq": 291 }, "comments": [],
+                        "git": { "commits": [{ "key": "abc", "releasedIn": { "tag": "v1.9.1", "at": "2026-11-03T00:00:00Z" } }] } })
+            }
+        });
+        let task = call_tool(&cfg, "get_task", &json!({ "id": "t1" })).unwrap();
+        assert_eq!(task["git"]["commits"][0]["releasedIn"]["tag"], "v1.9.1");
+        let map = call_tool(&cfg, "get_context", &json!({ "spaceId": "sp" })).unwrap();
+        assert_eq!(map["inProgress"][0]["shipped"]["tag"], "v1.9.1", "{map}");
     }
 
     /// Roturas que detecta: no mandar el handoff; tirar el vacío (es la orden

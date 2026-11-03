@@ -125,6 +125,26 @@ class Hooks(unittest.TestCase):
         self.assertIn("Trampas abiertas (1):", r.stdout)
         self.assertIn("- pixel-vps, cert-manager · pixel-vps corre cert-manager 1.14 (inc-1)", r.stdout)
 
+    def test_session_lists_the_tasks_whose_commits_already_shipped(self):
+        ANSWERS["/api/v1/context?repo=guz-studio%2Fcac"] = (200, {"space": {"name": "cac", "key": "cc"}, "inProgress": [
+            {"ref": "cc-7", "title": "Salió", "shipped": {"tag": "v1.9.1", "at": "2026-11-03T00:00:00Z"}},
+            {"ref": "cc-8", "title": "Falta"},
+        ]})
+        r = run_hook("cac-session", {"cwd": self.repo}, self.env)
+        self.assertIn("Ya salieron (ciérralas con status done y un comentario):\n- cc-7 · v1.9.1", r.stdout)
+        tail = r.stdout.split("Ya salieron")[1]
+        self.assertNotIn("cc-8", tail, "una sin shipped no está entre las que salieron")
+
+    def test_session_says_when_an_open_trap_is_already_fixed_in_a_release(self):
+        ANSWERS["/api/v1/context?repo=guz-studio%2Fcac"] = (200, {"space": {"id": "sp-1", "name": "cac"}, "inProgress": []})
+        ANSWERS["/api/v1/incidents/?spaceId=sp-1&status=open"] = (200, {"incidents": [
+            {"id": "inc-1", "title": "verificando para siempre", "areas": ["provisioning"], "shipped": {"tag": "v1.9.1"}},
+            {"id": "inc-2", "title": "sigue mordiendo", "areas": ["mcp"]},
+        ]})
+        r = run_hook("cac-session", {"cwd": self.repo}, self.env)
+        self.assertIn("verificando para siempre (inc-1) · arreglo publicado en v1.9.1", r.stdout)
+        self.assertIn("sigue mordiendo (inc-2)\n", r.stdout)
+
     # ── cac-prompt ──
 
     def prompt(self, text, session="s-1"):

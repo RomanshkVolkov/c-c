@@ -133,25 +133,33 @@ ya se haya publicado: esa sesión terminó antes de que saliera, y nadie la
 mueve. Así que, al llegar, revisa lo que `get_context` da en `inProgress` (o
 el tablero, con `get_board`):
 
-1. Lee su `handoff` en el mapa: dice qué falta («sale en la próxima
+1. **Si trae `shipped`**, cac ya vio salir todos sus commits en una release
+   de GitHub: ciérrala con `status: "done"` y el comentario «Salió en v1.9.1
+   (lo vio cac en la release)». Sin `shipped` no quiere decir que no salió:
+   una tarea con commits del backend, que se despliega con el push, no lo
+   lleva nunca; para ésas, el paso siguiente. Un incidente abierto con
+   `shipped` tiene su arreglo publicado: díselo al usuario; marcarlo
+   arreglado (`update_incident`) es decisión suya.
+2. Lee su `handoff` en el mapa: dice qué falta («sale en la próxima
    release», «espera a AWS», «falta probarlo en una llamada»). Sólo si no lo
    tiene, abre la tarea con `get_task` y lee el último comentario de una
    persona o un agente (los avisos de commit de GitHub no salen en el hilo:
    los mismos commits van en `git`).
-2. Si lo que faltaba ya pasó, ciérrala con `status: "done"` y un comentario que
+3. Si lo que faltaba ya pasó, ciérrala con `status: "done"` y un comentario que
    diga cómo lo comprobaste.
    - **Para comprobar si un commit ya se publicó:** el `git` de `get_task` trae
      los commits que nombran la tarea (ver «Cada commit nombra su tarea»). En un
      repo no conectado, el sha está en un comentario de la tarea.
-     - **La app:** sale en una release, así que `git tag --contains <sha>` dice
-       si ya está en una versión publicada.
+     - **La app:** sale en una release. Cada commit de `git` trae
+       `releasedIn` (el tag) cuando cac lo vio salir; si no, `git tag
+       --contains <sha>` dice si ya está en una versión publicada.
      - **El backend o la web:** se despliegan con el push, así que un commit en
        `main` con el CI en verde ya está publicado.
    - Si no puedes comprobarlo, no la cierres: pregúntale al usuario.
-3. Lo que dependa de una persona («probarlo en una llamada», «revisar en
+4. Lo que dependa de una persona («probarlo en una llamada», «revisar en
    local»), no lo cierres por tu cuenta: díselo al usuario, en una línea por
    tarea.
-4. Lo que espera a otra tarea lo dice el mapa (`blockedBy`, sólo las que
+5. Lo que espera a otra tarea lo dice el mapa (`blockedBy`, sólo las que
    siguen abiertas). Una tarea sin nada en `blockedBy` puede seguir; y
    `get_context` con `only: ["ready"]` da lo pendiente por lo que se puede
    empezar. (Un comentario viejo «Espera a <ref>» es de antes del campo: si lo
@@ -406,4 +414,4 @@ de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
 detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
 decisiones del espacio Command and control por qué está._
 
-<!-- cac-work v21 -->
+<!-- cac-work v22 -->
