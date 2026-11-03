@@ -1942,6 +1942,16 @@ playbooks:
         assert!(!tasks.iter().any(|t| serde_yaml::to_string(t).unwrap().contains("--from-literal")), "un secreto va por la línea de comandos");
         let verify = std::fs::read_to_string(root.join("playbooks/cnpg-verify.yml")).unwrap();
         assert!(verify.contains("completed") && verify.contains("ContinuousArchiving"), "el verify no mira el backup o el archivado del WAL");
+        // El primer arranque en gstd tardó 19 min en estar Ready: una espera
+        // de 10 dio por fallido un clúster sano.
+        let wait: u32 = verify
+            .split("wait cluster/postgres")
+            .nth(1)
+            .and_then(|r| r.split("--timeout=").nth(1))
+            .and_then(|r| r.split('s').next())
+            .and_then(|n| n.trim().parse().ok())
+            .expect("el verify no espera al clúster con un --timeout en segundos");
+        assert!(wait >= 1800, "el verify espera {wait}s al clúster; el primer arranque midió 19 min");
     }
 
     // TURN y los puertos UDP de LiveKit son opcionales: un servidor sin voz

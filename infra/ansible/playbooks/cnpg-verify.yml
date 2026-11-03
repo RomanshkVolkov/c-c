@@ -6,9 +6,12 @@
   become: true
   gather_facts: false
   tasks:
+    # El primer arranque es lento: en gstd (3-nov-2026) el Job de initdb tardó
+    # 18 min y el clúster estuvo Ready a los 19. Con 10 min de espera el
+    # verify falló con todo sano. Las siguientes veces contesta al momento.
     - name: Clúster de Postgres listo
       ansible.builtin.command: >-
-        kubectl -n data wait cluster/postgres --for=condition=Ready --timeout=600s
+        kubectl -n data wait cluster/postgres --for=condition=Ready --timeout=1800s
       changed_when: false
       check_mode: false
 
