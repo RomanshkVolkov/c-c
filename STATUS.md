@@ -40,8 +40,11 @@ de cac» del espacio). Lo que pixel-vps enseñó, corregido en `infra/ansible`:
   ejecución que muere antes de arrancar Ansible (1Password no contesta) ya no
   gasta la autorización: la petición vuelve a aprobada; y `op read` insiste
   tres veces si 1Password rechaza la conexión.
-- Pendiente: aplicar A y B en gstd (petición `119db4a8` con ensayo limpio,
-  aprueba jose), y D–H.
+- **A y B aplicadas en gstd** (petición `93bed71b`, verify en verde): k8s
+  1.35.10, addons al día, `local-path`, metrics-server, y los certificados
+  `*.gstd.guz-studio.dev` y `*.guz-studio.dev` emitidos. Dos incidentes más
+  por el camino (ee440236, 6ac2ad5d), arreglados.
+- Pendiente: aplicar C (bucket y secretos de jose), y D–H.
 
 **2-nov (noche), en `main`: la tanda antes de la release** (295–299, un
 commit por pieza; el backend ya está desplegado).
