@@ -168,7 +168,11 @@ playbooks:
       # `ansible::tests::every_addon_supports_the_kubernetes_minor`.
       - { name: k8s_version, default: "1.35.10" }
       - { name: k8s_minor, default: "1.35" }
-      - { name: containerd_version, default: "2.2.10" }
+      # containerd sale del repo de Docker (containerd.io), que no empaqueta
+      # cada parche río arriba: el ensayo del 3-nov-2026 cayó con «no
+      # available installation candidate for containerd.io=2.2.10». Antes de
+      # subirlo, `apt-cache madison containerd.io` en el servidor.
+      - { name: containerd_version, default: "2.4.2" }
       - { name: cilium_version, default: "1.19.10" }
       - { name: metallb_version, default: "0.16.1" }
       - { name: envoy_gateway_version, default: "v1.9.3" }
