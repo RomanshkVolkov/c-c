@@ -32,6 +32,11 @@ de cac» del espacio). Lo que pixel-vps enseñó, corregido en `infra/ansible`:
   [gstd.guz-studio.dev, guz-studio.dev]`. Decisiones: S3 para CNPG, el
   estándar del runner dwit-kb replicado para G Studio, y la definición del
   runner en `g-studio-labs/actions-runner`.
+- **C** (303) **aplicada el 3-nov**: CNPG 1.30.1 con plugin barman-cloud,
+  clúster `postgres` de una instancia en `data` (base `cac`, rol `cac_user`),
+  WAL y backup diario al bucket `guz-cnpg-backups` (Terraform). Restauración
+  probada: un Cluster temporal desde S3 trajo una marca escrita después del
+  backup. El verify espera 30 min (`29c13ed`): el primer arranque tardó 19.
 - **C** (303, `ff815c9`): Postgres como playbook propio `cnpg` (operador
   1.30.1, plugin barman-cloud, una instancia en `data`, WAL y backup diario a
   S3 con verify) y `infra/terraform/cnpg-backups`. Sin aplicar: faltan el
