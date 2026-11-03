@@ -192,6 +192,24 @@ func (h *ProvisioningHandler) Discard(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ProvisioningRequestResponse]{Success: true, Data: out})
 }
 
+// Reverify: volver a verificar una petición cuya verificación falló. Quien la
+// pidió (un miembro, o su agente con `servers:manage`) o un admin.
+func (h *ProvisioningHandler) Reverify(w http.ResponseWriter, r *http.Request) {
+	server, ok := scopeServer(w, r, h.servers, domain.OrgRoleMember)
+	if !ok {
+		return
+	}
+	user, _ := currentUser(r)
+	role, _ := user.RoleInOrg(server.OrgID)
+	admin := user.Superadmin || role == domain.OrgRoleAdmin
+	out, err := h.svc.Reverify(server, user, admin, chi.URLParam(r, "rqid"))
+	if err != nil {
+		requestError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ProvisioningRequestResponse]{Success: true, Data: out})
+}
+
 // Decide: de admin, como cambiar la conexión del servidor, y en persona.
 // Ningún token llega aquí: la ruta no está en `patWritable`, y el servicio lo
 // vuelve a mirar (`ViaToken`) por si algún día alguien la añadiera.

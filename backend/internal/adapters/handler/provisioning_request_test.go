@@ -272,6 +272,50 @@ func TestAFailedVerifyIsSaidAndNothingRollsBack(t *testing.T) {
 	}
 }
 
+func (p *protocol) reverify(id string, c *domain.ClaimsJWT) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	p.prov.Reverify(rec, requestReq(http.MethodPost, "srv-1", id, "", c))
+	return rec
+}
+
+// La verificación de CNPG en gstd falló por esperar poco a un Postgres sano
+// (3-nov-2026) y la petición se quedaba en rojo para siempre. Volver a
+// verificar la deja otra vez «verificando» sin dar nada por bueno: la cierra
+// la verificación nueva, en verde o en rojo. Roturas que atrapa: volver a
+// verificar desde otro estado (una fallida, una sin verificar); no soltar la
+// verificación vieja (no se podría lanzar otra); dejarlo a cualquier miembro;
+// que la nueva no cierre la petición.
+func TestAFailedVerifyCanBeRunAgain(t *testing.T) {
+	p, cleanup := newProtocol(t)
+	defer cleanup()
+	req := p.ask(swarmAsk)
+	p.check(req.ID, cleanDryRun())
+	p.decide(req.ID, `{"approve":true}`, person())
+	expect(t, p.reverify(req.ID, agent()), http.StatusConflict, "provisioning-request-state", "volver a verificar una aprobada sin correr")
+	p.finish(decode[domain.ProvisioningRun](t, p.start("swarm", req.ID, 1, agent())).ID, domain.ProvisioningSucceeded, "tds : ok=20 changed=4")
+	expect(t, p.reverify(req.ID, agent()), http.StatusConflict, "provisioning-request-state", "volver a verificar una que está verificando")
+	p.finish(decode[domain.ProvisioningRun](t, p.start("swarm-verify", req.ID, 1, agent())).ID, domain.ProvisioningFailed, "tds : ok=0 failed=1")
+
+	expect(t, p.reverify(req.ID, claims("u-otro", "org-1", domain.OrgRoleMember)), http.StatusForbidden, "provisioning-request-not-yours", "volver a verificar la de otro")
+	expect(t, p.reverify(req.ID, agent()), http.StatusOK, "", "volver a verificar la suya")
+	if got := p.get(req.ID); got.Status != domain.ProvisioningRequestVerifying || got.VerifyRunID != "" {
+		t.Fatalf("tras volver a verificar: %s verify_run=%q", got.Status, got.VerifyRunID)
+	}
+	// Ni el playbook ni el rollback: sólo la verificación.
+	expect(t, p.start("swarm", req.ID, 1, agent()), http.StatusConflict, "grant-mismatch", "correr otra vez el playbook")
+	p.finish(decode[domain.ProvisioningRun](t, p.start("swarm-verify", req.ID, 1, agent())).ID, domain.ProvisioningSucceeded, "tds : ok=5 changed=0")
+	if got := p.status(req.ID); got != domain.ProvisioningRequestSucceeded {
+		t.Fatalf("la verificación nueva pasó y la petición quedó %s", got)
+	}
+
+	// Una cuyo playbook falló no se «verifica» para ponerla en verde.
+	bad := p.ask(swarmAsk)
+	p.check(bad.ID, cleanDryRun())
+	p.decide(bad.ID, `{"approve":true}`, person())
+	p.finish(decode[domain.ProvisioningRun](t, p.start("swarm", bad.ID, 1, agent())).ID, domain.ProvisioningFailed, "tds : ok=3 failed=1")
+	expect(t, p.reverify(bad.ID, claims("u-admin", "org-1", domain.OrgRoleAdmin)), http.StatusConflict, "provisioning-request-state", "volver a verificar una cuyo playbook falló")
+}
+
 // Sólo lo de lectura va directo, y sólo con un ensayo que no cambiaría nada.
 // Si al correr cambia algo igualmente, la petición queda marcada.
 func TestAReadIsPreAuthorizedOnlyWhenItChangesNothing(t *testing.T) {

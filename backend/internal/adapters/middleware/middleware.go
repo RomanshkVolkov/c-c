@@ -435,6 +435,9 @@ var patWritable = []struct {
 	{http.MethodPut, regexp.MustCompile(`^/api/v1/servers/[^/]+/provisioning-requests/[^/]+/check$`), domain.ScopeServersManage},
 	// Descartar la suya si se quedó sin ensayo: no decide ni corre nada.
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/servers/[^/]+/provisioning-requests/[^/]+/discard$`), domain.ScopeServersManage},
+	// Volver a verificar una que falló la verificación: sólo repite una
+	// lectura, y la cierra lo que esa lectura diga.
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/servers/[^/]+/provisioning-requests/[^/]+/reverify$`), domain.ScopeServersManage},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/organizations/[^/]+/server-templates/?$`), domain.ScopeServersManage},
 	{http.MethodPut, regexp.MustCompile(`^/api/v1/organizations/[^/]+/server-templates/[^/]+$`), domain.ScopeServersManage},
 }

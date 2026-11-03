@@ -230,6 +230,27 @@ func (s *ProvisioningService) Discard(server *domain.ServerResponse, user *domai
 	return s.repo.Request(server.ID, id)
 }
 
+// Reverify deja volver a correr la verificación de una petición que la
+// falló. Una verificación puede fallar por algo que ya no es cierto: la de
+// CNPG en gstd esperó 10 min a un clúster que tardó 19 en su primer arranque
+// (3-nov-2026), y la petición se quedaba en rojo para siempre con Postgres
+// sano. No da nada por bueno: la petición vuelve a «verificando» y la cierra
+// lo que diga la verificación nueva. La anterior sigue en el historial de
+// ejecuciones. Como descartar: quien la pidió o un admin.
+func (s *ProvisioningService) Reverify(server *domain.ServerResponse, user *domain.ClaimsJWT, admin bool, id string) (*domain.ProvisioningRequestResponse, error) {
+	p, err := s.repo.Request(server.ID, id)
+	if err != nil {
+		return nil, err
+	}
+	if !admin && p.RequestedBy != user.UserID {
+		return nil, domain.ErrNotYourRequest
+	}
+	if err := s.repo.Reverify(server.ID, id); err != nil {
+		return nil, err
+	}
+	return s.repo.Request(server.ID, id)
+}
+
 // Decide es el paso 3: aprobar o rechazar. **Sólo una persona en persona**:
 // con un token, ni el de un admin, se puede decidir. Es la misma regla que
 // firmar la revisión de un doc (`ViaToken`).

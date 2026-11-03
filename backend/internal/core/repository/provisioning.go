@@ -178,6 +178,16 @@ func (r *ProvisioningRepository) ReopenRequest(id, from, to, runColumn string) e
 		Updates(map[string]any{"status": to, runColumn: ""}))
 }
 
+// Reverify devuelve a «verificando» una petición cuya verificación falló, y
+// suelta esa verificación para lanzar otra. Sólo desde `verify_failed`, en la
+// misma sentencia: el playbook ya se aplicó y su autorización ya se gastó;
+// lo único que se repite es la lectura de la verificación.
+func (r *ProvisioningRepository) Reverify(serverID, id string) error {
+	return oneRow(r.db.Model(&domain.ProvisioningRequest{}).
+		Where("id = ? AND server_id = ? AND status = ?", id, serverID, domain.ProvisioningRequestVerifyFailed).
+		Updates(map[string]any{"status": domain.ProvisioningRequestVerifying, "verify_run_id": ""}))
+}
+
 // Run: una ejecución, para saber al cerrarla de qué petición era.
 func (r *ProvisioningRepository) Run(serverID, id string) (*domain.ProvisioningRun, error) {
 	var run domain.ProvisioningRun
