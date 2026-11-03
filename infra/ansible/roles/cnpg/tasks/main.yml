@@ -1,0 +1,111 @@
+---
+# CloudNativePG como pixel-vps, con lo que allí se aprendió: el operador en
+# una línea vigente (la 1.28 de pixel-vps es EOL desde el 30-jun-2026), el
+# plugin barman-cloud (el barman nativo está deprecado), **una** instancia
+# (en un nodo la segunda duplica el disco y no sobrevive a perder el disco:
+# lo que protege es el backup), y los backups en S3 (decisión 178ba40d).
+- name: ¿Está el operador?
+  ansible.builtin.stat:
+    path: /etc/cac/cnpg.yaml
+  register: cnpg_manifest
+
+- name: Lo que el ensayo no puede ver
+  ansible.builtin.set_fact:
+    cnpg_rehearsal_blind: "{{ ansible_check_mode and not cnpg_manifest.stat.exists }}"
+
+- name: Ensayo parcial
+  ansible.builtin.debug:
+    msg: >-
+      Este clúster aún no tiene CNPG: el ensayo enseña el operador, el plugin
+      y los secretos, pero no el Cluster ni el backup (sus CRD los instala
+      este mismo playbook). Eso sólo se ve corriéndolo.
+  when: cnpg_rehearsal_blind
+
+- name: Hay bucket de backups
+  ansible.builtin.assert:
+    that: cnpg_backup_bucket | default('') | length > 0
+    fail_msg: >-
+      Falta cnpg_backup_bucket: el bucket de S3 al que barman archiva el WAL y
+      sube los backups (infra/terraform/cnpg-backups, output bucket_name).
+      Un Postgres sin backup no se levanta.
+    quiet: true
+
+- name: Repo de helm de CNPG
+  kubernetes.core.helm_repository:
+    name: cnpg
+    repo_url: https://cloudnative-pg.github.io/charts
+  check_mode: false
+
+- name: Operador de CloudNativePG (chart {{ cnpg_version }})
+  kubernetes.core.helm:
+    name: cnpg
+    chart_ref: cnpg/cloudnative-pg
+    update_repo_cache: true
+    chart_version: "{{ cnpg_version }}"
+    release_namespace: cnpg-system
+    create_namespace: true
+    wait: true
+
+# Necesita cert-manager (k8s-site lo deja) para sus certificados internos.
+- name: Plugin barman-cloud (chart {{ cnpg_barman_plugin_version }})
+  kubernetes.core.helm:
+    name: plugin-barman-cloud
+    chart_ref: cnpg/plugin-barman-cloud
+    update_repo_cache: true
+    chart_version: "{{ cnpg_barman_plugin_version }}"
+    release_namespace: cnpg-system
+    wait: true
+
+- name: Namespace de datos
+  ansible.builtin.shell:
+    cmd: kubectl create namespace data --dry-run=client -o yaml | kubectl apply --server-side --force-conflicts -f -
+  register: data_ns
+  changed_when: "'serverside-applied' in data_ns.stdout and 'unchanged' not in data_ns.stdout"
+
+# Los secretos entran por stdin y del lado del servidor: ni en la línea de
+# comandos ni en la anotación last-applied (--server-side), como el token de
+# Cloudflare en k8s_addons. `cnpg.io/reload`: al rotar la contraseña en
+# 1Password y volver a correr, CNPG la cambia en el rol solo.
+- name: Secretos de S3 y del rol dueño
+  ansible.builtin.shell:
+    cmd: kubectl apply --server-side --force-conflicts -f -
+    stdin: |
+      apiVersion: v1
+      kind: Secret
+      metadata: {name: cnpg-s3, namespace: data}
+      type: Opaque
+      stringData:
+        ACCESS_KEY_ID: "{{ cnpg_s3_access_key_id }}"
+        ACCESS_SECRET_KEY: "{{ cnpg_s3_secret_access_key }}"
+      ---
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: cnpg-owner
+        namespace: data
+        labels: {cnpg.io/reload: "true"}
+      type: kubernetes.io/basic-auth
+      stringData:
+        username: "{{ cnpg_owner }}"
+        password: "{{ cnpg_owner_password }}"
+    stdin_add_newline: false
+  register: cnpg_secrets
+  changed_when: "'serverside-applied' in cnpg_secrets.stdout and 'unchanged' not in cnpg_secrets.stdout"
+  no_log: true
+
+- name: Manifiesto del clúster de Postgres
+  ansible.builtin.template:
+    src: cnpg.yaml.j2
+    dest: /etc/cac/cnpg.yaml
+    mode: "0600"
+
+# Los webhooks del operador y del plugin tardan en contestar después de que
+# el chart dice «listo»: se reintenta. En un ensayo no corre.
+- name: Aplicar ObjectStore, Cluster y ScheduledBackup
+  ansible.builtin.command: kubectl apply --server-side --force-conflicts -f /etc/cac/cnpg.yaml
+  register: cnpg_apply
+  until: cnpg_apply.rc == 0
+  retries: 12
+  delay: 10
+  changed_when: "'serverside-applied' in cnpg_apply.stdout and 'unchanged' not in cnpg_apply.stdout"
+  when: not ansible_check_mode

@@ -1,0 +1,14 @@
+---
+# Postgres de producción con CloudNativePG, encima de un clúster hecho por
+# k8s-site: el operador y el plugin barman-cloud, y un clúster `postgres` en
+# el namespace `data` con su rol dueño, WAL archivado y backup diario a S3.
+# Idempotente. Playbook aparte de `k8s` porque trae secretos propios (las
+# llaves de S3 y la contraseña del rol) que un servidor sin base no tiene.
+#
+# El ensayo en un clúster sin CNPG es parcial: los CRD los instala el propio
+# playbook, así que el Cluster no se puede ensayar hasta que estén.
+- name: Postgres con CloudNativePG
+  hosts: k8s_control_plane
+  become: true
+  roles:
+    - {role: cnpg, tags: [cnpg]}

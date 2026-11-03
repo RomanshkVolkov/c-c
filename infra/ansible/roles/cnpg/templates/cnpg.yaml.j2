@@ -1,0 +1,83 @@
+# {{ ansible_managed }}
+# El Postgres de {{ inventory_hostname }}: como el `postgres-ha` de pixel-vps
+# (~/projects/dwit/infra/k8s/dwit-kb/db/), pero con una instancia, el plugin
+# barman-cloud y S3. El rol dueño y la base nacen con el clúster; la
+# contraseña la gestiona CNPG desde el Secret `cnpg-owner`.
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata: {name: s3-backup-store, namespace: data}
+spec:
+  configuration:
+    destinationPath: "s3://{{ cnpg_backup_bucket }}/{{ inventory_hostname }}/"
+    # La región va explícita: una región nueva (mx-central-1) no se resuelve
+    # desde el endpoint global.
+    endpointURL: "https://s3.{{ cnpg_backup_region }}.amazonaws.com"
+    s3Credentials:
+      accessKeyId: {name: cnpg-s3, key: ACCESS_KEY_ID}
+      secretAccessKey: {name: cnpg-s3, key: ACCESS_SECRET_KEY}
+    wal: {compression: gzip, maxParallel: 2}
+    data: {compression: gzip, jobs: 2}
+  # Lo que barman borra por retención; el bucket guarda una semana más la
+  # versión anterior de lo borrado (infra/terraform/cnpg-backups).
+  retentionPolicy: "{{ cnpg_backup_retention }}"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata: {name: postgres, namespace: data}
+spec:
+  instances: {{ cnpg_instances }}
+  imageName: {{ cnpg_postgres_image }}
+  # Sin storageClass: la de por defecto del clúster (local-path, de k8s-site).
+  storage: {size: {{ cnpg_storage_size }}}
+  bootstrap:
+    initdb:
+      database: {{ cnpg_database }}
+      owner: {{ cnpg_owner }}
+      secret: {name: cnpg-owner}
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+  managed:
+    roles:
+      - name: {{ cnpg_owner }}
+        ensure: present
+        login: true
+        superuser: false
+        passwordSecret: {name: cnpg-owner}
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: s3-backup-store
+        # Si se recrea el clúster desde este bucket, el nombre nuevo tiene que
+        # ser otro (postgres-v2): barman no mezcla dos líneas de WAL.
+        serverName: postgres-v1
+  resources:
+    requests: {cpu: 500m, memory: 2Gi}
+    limits: {memory: 4Gi}
+  postgresql:
+    parameters:
+      shared_buffers: 1GB
+      effective_cache_size: 3GB
+      work_mem: 32MB
+      maintenance_work_mem: 512MB
+      max_connections: "100"
+      min_wal_size: 1GB
+      max_wal_size: 4GB
+      checkpoint_completion_target: "0.9"
+      random_page_cost: "1.1"
+      log_min_duration_statement: "500"
+      log_checkpoints: "on"
+    pg_hba:
+      - host all all all scram-sha-256
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata: {name: postgres-daily, namespace: data}
+spec:
+  schedule: "{{ cnpg_backup_schedule }}"
+  backupOwnerReference: self
+  immediate: true
+  cluster: {name: postgres}
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io

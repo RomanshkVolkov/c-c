@@ -5,7 +5,7 @@
 #   make plan     SERVER=gstd P=swarm   # qué se correría y qué falta en cac
 #   make test     SERVER=gstd           # pide `test` (y su ensayo)
 #   make swarm    SERVER=gstd           # pide la etapa 2: Swarm + Traefik
-#   make baseline / swarm-verify / swarm-down / k8s / k8s-verify / k8s-down  SERVER=…
+#   make baseline / swarm-verify / swarm-down / k8s / k8s-verify / k8s-down / cnpg / cnpg-verify  SERVER=…
 #   make run      SERVER=gstd GRANT=<id> # corre una petición autorizada, y su verify
 #
 # Nada se aplica sin el protocolo (decisión 4d28f4ab): cada atajo **pide**,
@@ -32,7 +32,7 @@ need_server = $(if $(SERVER),,$(error falta SERVER=<nombre o id del servidor en 
 provision   = $(call need_server)$(CAC) provision request --server '$(SERVER)' --playbook $(1) --reason '$(REASON)' --folder .
 
 .DEFAULT_GOAL := help
-.PHONY: help setup syntax plan run test baseline swarm swarm-verify swarm-down k8s k8s-verify k8s-down
+.PHONY: help setup syntax plan run test baseline swarm swarm-verify swarm-down k8s k8s-verify k8s-down cnpg cnpg-verify
 
 help: ## Esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-13s\033[0m %s\n", $$1, $$2}'
@@ -80,3 +80,9 @@ k8s-verify: ## Verificar Kubernetes
 
 k8s-down: ## Desmontar Kubernetes (destructivo)
 	$(call provision,k8s-teardown)
+
+cnpg: ## Postgres con CloudNativePG encima de k8s (backups a S3)
+	$(call provision,cnpg)
+
+cnpg-verify: ## Verificar Postgres
+	$(call provision,cnpg-verify)

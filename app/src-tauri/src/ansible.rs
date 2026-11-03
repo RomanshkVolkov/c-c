@@ -1902,6 +1902,38 @@ playbooks:
         assert!(serde_yaml::to_string(&guard["that"]).unwrap().contains("dns_zone"));
     }
 
+    // pixel-vps: CNPG 1.28 (EOL), dos instancias en el mismo disco, el barman
+    // nativo (deprecado) a Azure. Aquí Postgres es su propio playbook (trae
+    // sus secretos: un servidor sin base no los tiene), con una instancia, el
+    // plugin barman-cloud archivando WAL, backup diario a S3, y un verify que
+    // exige un backup completo. Roturas que atrapa: volver a meter CNPG en
+    // `k8s`; más de una instancia por defecto; un Cluster sin archivar WAL o
+    // sin backup programado; un secreto por línea de comandos o sin no_log; un
+    // verify que no mira el backup ni el archivado.
+    #[test]
+    fn postgres_is_its_own_playbook_with_one_instance_and_s3_backups() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let m = parse_manifest(&std::fs::read_to_string(root.join(MANIFEST_FILE)).unwrap()).unwrap();
+        let k8s = m.playbooks.iter().find(|p| p.id == "k8s").unwrap();
+        assert!(!k8s.vars.iter().any(|v| v.name.starts_with("cnpg") || v.name == "install_cnpg"), "CNPG vuelve a vivir dentro de k8s");
+        let cnpg = m.playbooks.iter().find(|p| p.id == "cnpg").expect("sin playbook cnpg");
+        assert_eq!((cnpg.risk.as_deref(), cnpg.verify.as_deref()), (Some(RISK_CHANGE), Some("cnpg-verify")));
+        assert_eq!(cnpg.vars.iter().find(|v| v.name == "cnpg_instances").and_then(|v| v.default.as_ref()), Some(&serde_json::json!(1)), "más de una instancia por defecto");
+        for secret in ["CNPG_S3_ACCESS_KEY_ID", "CNPG_S3_SECRET_ACCESS_KEY", "CNPG_OWNER_PASSWORD"] {
+            assert!(cnpg.vars.iter().any(|v| v.secret && v.from.as_deref() == Some(secret)), "cnpg no declara el secreto {secret}");
+        }
+        let t = std::fs::read_to_string(root.join("roles/cnpg/templates/cnpg.yaml.j2")).unwrap();
+        for needle in ["kind: ObjectStore", "s3Credentials", "isWALArchiver: true", "kind: ScheduledBackup", "instances: {{ cnpg_instances }}", "retentionPolicy"] {
+            assert!(t.contains(needle), "el manifiesto de Postgres no trae `{needle}`");
+        }
+        let tasks = ansible_tasks(&std::fs::read_to_string(root.join("roles/cnpg/tasks/main.yml")).unwrap());
+        let secrets = tasks.iter().find(|t| t.get("ansible.builtin.shell").and_then(|s| s.get("stdin")).is_some()).expect("los secretos no entran por stdin");
+        assert_eq!(secrets["no_log"].as_bool(), Some(true), "los secretos salen en el log");
+        assert!(!tasks.iter().any(|t| serde_yaml::to_string(t).unwrap().contains("--from-literal")), "un secreto va por la línea de comandos");
+        let verify = std::fs::read_to_string(root.join("playbooks/cnpg-verify.yml")).unwrap();
+        assert!(verify.contains("completed") && verify.contains("ContinuousArchiving"), "el verify no mira el backup o el archivado del WAL");
+    }
+
     // TURN y los puertos UDP de LiveKit son opcionales: un servidor sin voz
     // no abre nada. Y la verificación espera a TODOS los certificados, no
     // sólo al primero. Roturas que atrapa: el listener turn-tls sin su

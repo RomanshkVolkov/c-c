@@ -9,7 +9,11 @@ Playbooks para dejar un servidor listo desde cero, por etapas:
 2. **Lo que corre encima**, uno de dos:
    - **Swarm + Traefik**: lo que cac ya sabe desplegar (agente `swarm-manage`).
    - **Kubernetes con kubeadm**, replicando pixel-vps: containerd, Cilium,
-     MetalLB, Envoy Gateway y cert-manager (CNPG con `install_cnpg: true`).
+     MetalLB, Envoy Gateway, cert-manager, `local-path` y metrics-server.
+3. **Lo que trae secretos propios**, cada uno su playbook encima de k8s:
+   **Postgres con CloudNativePG** (`cnpg`: operador + plugin barman-cloud, un
+   clúster `postgres` de una instancia en `data`, WAL archivado y backup
+   diario a S3; ver `infra/terraform/cnpg-backups`).
 
 Los dos emiten un certificado wildcard `*.<base_domain>` por reto DNS en
 Cloudflare, y dejan un `whoami.<base_domain>` como prueba de humo. En

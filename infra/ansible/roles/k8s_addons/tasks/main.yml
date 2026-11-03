@@ -1,7 +1,8 @@
 ---
 # Las piezas de pixel-vps encima del clúster: Cilium (red), MetalLB (la IP
-# pública para Services), Envoy Gateway (entrada) y cert-manager (TLS). CNPG,
-# detrás de install_cnpg. Todo con helm y kubectl en el servidor.
+# pública para Services), Envoy Gateway (entrada) y cert-manager (TLS). Lo
+# que trae secretos propios (Postgres con CNPG, Valkey, el runner) es cada
+# uno su playbook. Todo con helm y kubectl en el servidor.
 # Un repo que falta se añade también en el ensayo: en --check no se añadiría
 # y el chart de después no lo encontraría («repo metrics-server not found»,
 # gstd, 3-nov-2026). Es un índice en el disco de root, no un cambio del
@@ -16,7 +17,6 @@
     - {name: cilium, url: "https://helm.cilium.io"}
     - {name: metallb, url: "https://metallb.github.io/metallb"}
     - {name: jetstack, url: "https://charts.jetstack.io"}
-    - {name: cnpg, url: "https://cloudnative-pg.github.io/charts"}
     - {name: metrics-server, url: "https://kubernetes-sigs.github.io/metrics-server"}
 
 # VXLAN y con kube-proxy, como pixel-vps; el pool de pods es pod_cidr (ver
@@ -116,17 +116,6 @@
       crds:
         enabled: true
         keep: true
-
-- name: CloudNativePG
-  when: install_cnpg | bool
-  kubernetes.core.helm:
-    name: cnpg
-    chart_ref: cnpg/cloudnative-pg
-    update_repo_cache: true
-    chart_version: "{{ cnpg_version }}"
-    release_namespace: cnpg-system
-    create_namespace: true
-    wait: true
 
 # El token de Cloudflare entra por stdin y del lado del servidor: ni en la
 # línea de comandos ni en la anotación last-applied (por --server-side).

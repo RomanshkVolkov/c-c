@@ -181,9 +181,6 @@ playbooks:
       # (cert-manager#7540, arreglado en 1.16.4/1.17.1), y el certificado no
       # se emite nunca (gstd, 2-nov-2026).
       - { name: cert_manager_version, default: "v1.21.3" }
-      # El chart 0.29.1 instala el operador 1.30.1. El 0.27 instalaba 1.28,
-      # que llegó a fin de vida el 30-jun-2026 (es el de pixel-vps).
-      - { name: cnpg_version, description: Chart del operador de CNPG (0.29.1 = operador 1.30.1)., default: "0.29.1" }
       # helm 3: el módulo kubernetes.core.helm no está probado con helm 4.
       - { name: helm_version, default: "v3.22.1" }
       # Almacenamiento por defecto (como pixel-vps): un PVC sin StorageClass
@@ -195,7 +192,6 @@ playbooks:
       # con la red de Services (10.96.0.0/12). Aquí no.
       - { name: pod_cidr, default: 10.244.0.0/16 }
       - { name: service_cidr, default: 10.96.0.0/12 }
-      - { name: install_cnpg, default: false }
       - name: cloudflare_dns_token
         description: Token de Cloudflare con DNS Edit y Zone Read sobre la zona.
         secret: true
@@ -211,6 +207,58 @@ playbooks:
     become_password_from: OPS_PASSWORD
     vars:
       - { name: base_domain, required: true }
+
+  - id: cnpg
+    file: playbooks/cnpg-site.yml
+    name: "Postgres con CloudNativePG"
+    description: >-
+      Encima de k8s: el operador de CNPG y el plugin barman-cloud, y un clúster
+      `postgres` en el namespace data con una instancia, su rol dueño, WAL
+      archivado y backup diario a S3. Idempotente. Trae sus propios secretos.
+    hosts: k8s_control_plane
+    risk: change
+    verify: cnpg-verify
+    # Borrar un Postgres no se deshace con un playbook: se decide a mano, con
+    # un backup delante.
+    rollback: manual
+    become: true
+    become_password_from: OPS_PASSWORD
+    vars:
+      # El chart 0.29.1 instala el operador 1.30.1. El 0.27 instalaba 1.28,
+      # que llegó a fin de vida el 30-jun-2026 (es el de pixel-vps).
+      - { name: cnpg_version, description: Chart del operador de CNPG (0.29.1 = operador 1.30.1)., default: "0.29.1" }
+      - { name: cnpg_barman_plugin_version, description: Chart del plugin barman-cloud (0.8.1 = v0.15.1)., default: "0.8.1" }
+      - { name: cnpg_postgres_image, description: "Imagen de Postgres de CNPG (la familia standard trae pgvector y pgaudit).", default: "ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie" }
+      # Una: en un nodo la segunda instancia duplica el disco y no sobrevive a
+      # perder el disco. Lo que protege es el backup.
+      - { name: cnpg_instances, default: 1 }
+      - { name: cnpg_storage_size, default: "40Gi" }
+      - { name: cnpg_database, description: La base que nace con el clúster., required: true }
+      - { name: cnpg_owner, description: El rol dueño de esa base (la app entra con él)., required: true }
+      - { name: cnpg_backup_bucket, description: "Bucket de S3 de barman (infra/terraform/cnpg-backups, output bucket_name).", required: true }
+      - { name: cnpg_backup_region, default: "mx-central-1" }
+      - { name: cnpg_backup_retention, default: "30d" }
+      - { name: cnpg_backup_schedule, description: "Cron de seis campos (segundos primero), en UTC.", default: "0 0 4 * * *" }
+      - name: cnpg_s3_access_key_id
+        description: Llave del usuario IAM de barman (output access_key_id).
+        secret: true
+        from: CNPG_S3_ACCESS_KEY_ID
+      - name: cnpg_s3_secret_access_key
+        secret: true
+        from: CNPG_S3_SECRET_ACCESS_KEY
+      - name: cnpg_owner_password
+        description: La contraseña del rol dueño (generada en 1Password).
+        secret: true
+        from: CNPG_OWNER_PASSWORD
+
+  - id: cnpg-verify
+    file: playbooks/cnpg-verify.yml
+    name: Verificar Postgres
+    description: Clúster listo, WAL archivado, un backup completo en S3 y la base contesta. No cambia nada.
+    hosts: k8s_control_plane
+    risk: read
+    become: true
+    become_password_from: OPS_PASSWORD
 
   - id: k8s-teardown
     file: playbooks/k8s-teardown.yml

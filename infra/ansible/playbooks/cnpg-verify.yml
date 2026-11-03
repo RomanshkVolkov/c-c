@@ -1,0 +1,57 @@
+---
+# Comprueba que el clúster de Postgres está sano, que archiva WAL y que hay un
+# backup completo en S3. No cambia nada.
+- name: Verificar CloudNativePG
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Clúster de Postgres listo
+      ansible.builtin.command: >-
+        kubectl -n data wait cluster/postgres --for=condition=Ready --timeout=600s
+      changed_when: false
+      check_mode: false
+
+    # El ScheduledBackup pide uno al crearse (`immediate`): la primera
+    # verificación lo espera, las siguientes lo encuentran.
+    - name: Hay un backup completo
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl -n data get backup -o jsonpath='{range .items[*]}{.status.phase}{"\n"}{end}'
+          | grep -c '^completed$'
+      register: backups_done
+      changed_when: false
+      check_mode: false
+      until: backups_done.stdout | int > 0
+      retries: 30
+      delay: 20
+
+    # Sin WAL archivado un backup base no sirve para recuperar a un punto.
+    - name: El WAL se archiva
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl -n data get cluster postgres -o jsonpath='{.status.conditions[?(@.type=="ContinuousArchiving")].status}'
+      register: wal
+      changed_when: false
+      check_mode: false
+      failed_when: wal.stdout != "True"
+
+    - name: La base contesta por el servicio de escritura
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl -n data exec $(kubectl -n data get cluster postgres -o jsonpath='{.status.currentPrimary}')
+          -c postgres -- psql -U postgres -Atc 'select 1'
+      register: ping
+      changed_when: false
+      check_mode: false
+      failed_when: ping.stdout != "1"
+
+    - name: Estado
+      ansible.builtin.command: kubectl -n data get cluster,backup,scheduledbackup,pvc
+      register: state
+      changed_when: false
+      check_mode: false
+
+    - name: Resultado
+      ansible.builtin.debug:
+        var: state.stdout_lines
