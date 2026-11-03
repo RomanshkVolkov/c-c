@@ -215,6 +215,10 @@ type ContextTask struct {
 	HandoffAt   *time.Time `json:"handoffAt,omitempty"`
 	HandoffByID string     `json:"-"`
 	HandoffBy   string     `json:"handoffBy,omitempty"`
+	// Shipped: todos sus commits enlazados ya salieron en una release (ver
+	// Release). Es la tarea que la sesión cierra al poner el tablero al día;
+	// cac no la mueve (command-and-control-295).
+	Shipped *ReleaseRef `json:"shipped,omitempty"`
 }
 
 // Límites del mapa: lo que pasa de aquí se recorta y se dice en `Truncated`.

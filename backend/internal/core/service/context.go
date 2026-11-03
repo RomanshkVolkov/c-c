@@ -186,6 +186,9 @@ func (s *ContextService) decorateTasks(spaceKey string, tasks []domain.ContextTa
 	if err != nil {
 		return err
 	}
+	// Las que ya salieron enteras en una release: la sesión las cierra (un
+	// extra: si falla, el mapa sale sin ello).
+	shipped, _ := s.github.ShippedOfTasks(ids)
 	keys := map[string]string{} // espacio → clave, para las dependencias de otro espacio
 	ref := func(spaceID, projectID string, seq int) string {
 		if projectID != "" {
@@ -211,6 +214,7 @@ func (s *ContextService) decorateTasks(spaceKey string, tasks []domain.ContextTa
 			t.Ref = domain.Folio(slug, t.Seq)
 		}
 		t.Assignees = assignees[t.ID]
+		t.Shipped = shipped[t.ID]
 		if t.HandoffByID != "" {
 			t.HandoffBy = s.repo.DisplayName(t.HandoffByID)
 		}

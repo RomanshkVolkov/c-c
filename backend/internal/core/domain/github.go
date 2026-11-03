@@ -109,6 +109,9 @@ type TaskGitLink struct {
 	// OccurredAt ordena el panel: la fecha del commit, la de la PR, o la primera
 	// vez que se vio la rama.
 	OccurredAt time.Time `gorm:"index;not null" json:"occurredAt"`
+	// ReleasedIn: en un commit, la release de su repo en la que salió (ver
+	// Release). Se calcula al leer; nunca se guarda aquí.
+	ReleasedIn *ReleaseRef `gorm:"-" json:"releasedIn,omitempty"`
 }
 
 func (TaskGitLink) TableName() string { return "task_git_links" }

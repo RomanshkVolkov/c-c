@@ -282,9 +282,12 @@ func (r *IncidentRepository) List(f domain.IncidentFilter) ([]domain.IncidentSum
 	if err != nil {
 		return nil, err
 	}
+	// Si su arreglo ya salió en una release: un extra, sin él no se cae.
+	shipped, _ := ShippedOfIncidents(r.db, ids)
 	for i := range out {
 		out[i].Servers = orEmptyServers(servers[out[i].ID])
 		out[i].Areas = orEmptyStrings(areas[out[i].ID])
+		out[i].Shipped = shipped[out[i].ID]
 	}
 	return out, nil
 }
@@ -315,9 +318,11 @@ func (r *IncidentRepository) ForDocs(orgID string, docIDs []string) (map[string]
 	if err != nil {
 		return nil, err
 	}
+	shipped, _ := ShippedOfIncidents(r.db, ids)
 	for _, x := range rows {
 		s := x.IncidentSummary
 		s.Servers, s.Areas = orEmptyServers(servers[s.ID]), orEmptyStrings(areas[s.ID])
+		s.Shipped = shipped[s.ID]
 		byDoc[x.DocID] = append(byDoc[x.DocID], s)
 	}
 	return byDoc, nil

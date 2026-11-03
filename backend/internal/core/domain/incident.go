@@ -197,6 +197,9 @@ type IncidentSummary struct {
 	Areas     []string            `gorm:"-" json:"areas"`
 	CreatedAt time.Time           `json:"recordedAt"`
 	FixedAt   *time.Time          `json:"fixedAt,omitempty"`
+	// Shipped: todos sus commits ya salieron en una release. En uno abierto
+	// es «el arreglo está publicado»; marcarlo arreglado lo decide alguien.
+	Shipped *ReleaseRef `gorm:"-" json:"shipped,omitempty"`
 }
 
 var areaJunk = regexp.MustCompile(`[^a-z0-9.+-]+`)

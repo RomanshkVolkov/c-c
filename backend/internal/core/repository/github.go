@@ -297,7 +297,31 @@ func GitLinksOf(db *gorm.DB, itemID string) (*domain.TaskGitLinks, error) {
 	if len(rows) == 0 {
 		return nil, nil
 	}
+	markReleased(db, out.Commits)
 	return out, nil
+}
+
+// markReleased: a cada commit, la release en la que salió (ver
+// domain.Release). Un extra: si falla, los commits salen sin ello.
+func markReleased(db *gorm.DB, commits []domain.TaskGitLink) {
+	byRepo := map[int64][]string{}
+	for _, c := range commits {
+		byRepo[c.RepoID] = append(byRepo[c.RepoID], c.Key)
+	}
+	for repoID, shas := range byRepo {
+		released, err := ReleasesOfCommits(db, repoID, shas)
+		if err != nil {
+			continue
+		}
+		for i := range commits {
+			if commits[i].RepoID != repoID {
+				continue
+			}
+			if r, ok := released[commits[i].Key]; ok {
+				commits[i].ReleasedIn = &r
+			}
+		}
+	}
 }
 
 // GitSummaries: el resumen de cada tarjeta de un tablero, en una consulta

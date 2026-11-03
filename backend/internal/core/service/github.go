@@ -422,6 +422,8 @@ type ghPayload struct {
 	} `json:"workflow_run"`
 	Number      int  `json:"number"`
 	PullRequest ghPR `json:"pull_request"`
+	// Release: el evento `release` (ver onRelease).
+	Release ghRelease `json:"release"`
 }
 
 // Handle procesa una entrega ya verificada.
@@ -475,6 +477,10 @@ func (s *GitHubService) handle(event string, body []byte) error {
 		return s.onBranchEvent(event, &p)
 	case "workflow_run":
 		return s.onWorkflowRun(&p)
+	// Una release publicada: qué commits lleva, para saber qué salió.
+	// Hay que suscribir el evento en la App (Permissions & events → Release).
+	case "release":
+		return s.onRelease(&p)
 	}
 	return nil
 }

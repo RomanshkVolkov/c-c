@@ -172,6 +172,8 @@ func DBConnection() {
 		&domain.Incident{}, &domain.IncidentServer{}, &domain.IncidentArea{}, &domain.IncidentCommit{}, &domain.IncidentGuard{},
 		// Lo que GitHub tiene enlazado a cada tarea (ver domain/github.go).
 		&domain.TaskGitLink{},
+		// Las releases y sus commits: «¿esto ya salió?» (ver domain/release.go).
+		&domain.Release{}, &domain.ReleaseCommit{},
 	); err != nil {
 		panic("failed to run migrations: " + err.Error())
 	}
@@ -217,6 +219,9 @@ func DBConnection() {
 	// Un commit o una PR comenta una tarea una sola vez. Ver github.go.
 	if err := EnsureGitHubIndexes(db); err != nil {
 		lg.Error("github indexes: " + err.Error())
+	}
+	if err := EnsureReleaseIndexes(db); err != nil {
+		lg.Error("release indexes: " + err.Error())
 	}
 
 	// Una decisión escrita desde un comentario se escribe una sola vez.
