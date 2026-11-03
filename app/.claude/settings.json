@@ -10,6 +10,9 @@
     ],
     "UserPromptSubmit": [
       {"hooks": [{"type": "command", "command": "\"$(git -C \"$CLAUDE_PROJECT_DIR\" rev-parse --show-toplevel)/.claude/hooks/cac-prompt\"", "timeout": 5}]}
+    ],
+    "PreToolUse": [
+      {"matcher": "Edit|Write|MultiEdit", "hooks": [{"type": "command", "command": "\"$(git -C \"$CLAUDE_PROJECT_DIR\" rev-parse --show-toplevel)/.claude/hooks/cac-edit\"", "timeout": 5}]}
     ]
   }
 }

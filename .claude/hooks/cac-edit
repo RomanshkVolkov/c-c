@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""PreToolUse (Edit, Write): al editar un fichero, los incidentes cuya prueba
+guardián vive ahí, una vez por sesión cada uno.
+
+`cac-prompt` salta cuando el prompt nombra un servidor o un área, pero un
+agente pasa la sesión editando ficheros: editar `ansible.rs` sin saber que
+`ansible::tests::cert_manager_can_clean_its_cloudflare_challenge` guarda lo
+que mordió en gstd es como ir a ciegas (command-and-control-296).
+
+El casado es local (ver `guards_for` en cac_hooks.py): sin modelo y sin pedir
+nada a cac más que el listado de incidentes que ya cachea `cac-prompt`, con
+la que comparte también lo ya enseñado.
+
+En PreToolUse lo que se imprime en texto plano **no le llega al modelo**: va
+en JSON, como `additionalContext`. Y **sin `permissionDecision`**: con
+`allow`, este hook aprobaría cada edición saltándose los permisos de quien
+trabaja; sin él, la herramienta sigue su flujo de siempre. Ante cualquier
+fallo, calla.
+"""
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from cac_hooks import (  # noqa: E402
+    cac_config,
+    go_test_index,
+    guard_candidates,
+    guards_for,
+    incidents,
+    load_seen,
+    read_input,
+    repo_of,
+    save_seen,
+)
+
+MAX_LINES = 5
+
+
+def main():
+    inp = read_input()
+    path = (inp.get("tool_input") or {}).get("file_path") or ""
+    if not path:
+        return
+    root, _ = repo_of(inp.get("cwd") or os.path.dirname(path) or os.getcwd())
+    if not root:
+        return
+    path = os.path.realpath(path)
+    root = os.path.realpath(root)
+    if os.path.commonpath([path, root]) != root:
+        return
+    rel = os.path.relpath(path, root)
+    cfg = cac_config()
+    if not cfg:
+        return
+    session = inp.get("session_id") or ""
+    seen = load_seen(session)
+    found = [i for i in incidents(cfg) if i.get("id") not in seen]
+    if not found:
+        return
+    c = guard_candidates(rel)
+    go_tests = go_test_index(root, c["dir"]) if c.get("go") else None
+    hits = guards_for(rel, found, go_tests)[:MAX_LINES]
+    if not hits:
+        return
+    lines = [f"cac · incidentes cuya prueba vive en lo que editas ({c['rel']}):"]
+    for inc, guard in hits:
+        state = "abierto" if inc.get("status") == "open" else "arreglado"
+        lines.append(f"- [{state}] {inc.get('title', '')} · guard {guard} · get_incident {inc.get('id')}")
+    save_seen(session, seen | {inc.get("id") for inc, _ in hits})
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": "\n".join(lines)}}))
+
+
+if __name__ == "__main__":
+    main()

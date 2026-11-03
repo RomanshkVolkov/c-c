@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Lo que comparten los dos hooks de cac (`cac-session` y `cac-handoff`).
+"""Lo que comparten los hooks de cac (`cac-session`, `cac-handoff`,
+`cac-prompt` y `cac-edit`).
 
 Un hook corre con el usuario, en cada sesión, sin que el agente tenga que
 acordarse: es la diferencia entre una nota y un guardián. Viven en el repo
@@ -16,10 +17,14 @@ import os
 import re
 import subprocess
 import sys
+import time
+import unicodedata
 import urllib.error
 import urllib.request
 
 TIMEOUT = 5
+# Cada cuánto se vuelven a pedir los incidentes (cac-prompt, cac-edit).
+VOCAB_TTL = 15 * 60
 
 
 def git(cwd, *args):
@@ -78,3 +83,157 @@ def read_input():
         return json.load(sys.stdin)
     except ValueError:
         return {}
+
+
+# ── Los incidentes, cacheados, y lo ya enseñado en cada sesión ──
+#
+# `cac-prompt` y `cac-edit` comparten la caché y el «ya enseñado»: un
+# incidente que salió al nombrar su servidor no vuelve a salir al editar el
+# fichero de su prueba, y al revés.
+
+def cache_dir():
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    d = os.path.join(base, "cac-hooks")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def fold(s):
+    """Minúsculas y sin acentos: «Kubernetes» y «kubernetes», «ñ» y «n»."""
+    s = unicodedata.normalize("NFKD", s.lower())
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
+def incidents(cfg):
+    """Los incidentes vigentes de las orgs del token, cacheados. Sin cuerpo."""
+    path = os.path.join(cache_dir(), "incidents.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            cached = json.load(f)
+        if time.time() - cached.get("at", 0) < VOCAB_TTL:
+            return cached.get("incidents") or []
+    except (OSError, ValueError):
+        pass
+    data = api(cfg, "/api/v1/incidents/?limit=200")
+    if data is None:
+        return []
+    found = data.get("incidents") or []
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"at": time.time(), "incidents": found}, f)
+    except OSError:
+        pass
+    return found
+
+
+
+def seen_path(session):
+    safe = re.sub(r"[^A-Za-z0-9_-]", "", session or "")[:80] or "sin-sesion"
+    return os.path.join(cache_dir(), f"seen-{safe}.json")
+
+
+def load_seen(session):
+    try:
+        with open(seen_path(session), encoding="utf-8") as f:
+            return set(json.load(f))
+    except (OSError, ValueError):
+        return set()
+
+
+def save_seen(session, ids):
+    try:
+        with open(seen_path(session), "w", encoding="utf-8") as f:
+            json.dump(sorted(ids), f)
+    except OSError:
+        pass
+    # Lo de sesiones de hace más de un día ya no sirve a nadie.
+    d = cache_dir()
+    for name in os.listdir(d):
+        p = os.path.join(d, name)
+        if name.startswith("seen-") and time.time() - os.path.getmtime(p) > 86400:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+
+# ── El fichero que se edita y las pruebas que guardan cada incidente ──
+#
+# Un guardián es texto libre, tal como se busca en el repo: `ansible::tests::x`
+# (Rust), `app/src/pages/servers/ServerProvision.test.tsx «…»`,
+# `ServerConfig.test.tsx («…»)` o `service.TestFoo` (Go). Se casa con el
+# fichero sin pedir nada más a cac (command-and-control-296).
+
+GUARD_SPLIT = re.compile(r"::|[./\s«»()\"',]+")
+TEST_SUFFIX = re.compile(r"(\.test|\.spec|_test)$")
+MIN_STEM = 3
+
+
+def guard_candidates(rel):
+    """Lo que de un fichero puede aparecer en un guardián: la ruta, el
+    nombre, el nombre sin extensión ni sufijo de prueba (`ServerProvision`
+    para `ServerProvision.tsx` y para `ServerProvision.test.tsx`), el prefijo
+    de módulo de Rust (`ansible::`) y el de paquete de Go (`service.`)."""
+    rel = rel.replace(os.sep, "/")
+    base = rel.rsplit("/", 1)[-1]
+    stem, ext = os.path.splitext(base)
+    stem = TEST_SUFFIX.sub("", stem)
+    out = {"rel": rel, "base": base, "stem": stem, "ext": ext}
+    if ext == ".rs":
+        out["rust"] = stem + "::"
+    if ext == ".go":
+        parent = rel.rsplit("/", 2)
+        out["go"] = (parent[-2] if len(parent) >= 2 else "") + "."
+        out["dir"] = rel.rsplit("/", 1)[0] if "/" in rel else "."
+    return out
+
+
+def guard_matches(c, guard, go_tests=None):
+    """Si un guardián vive en el fichero `c` (de guard_candidates).
+
+    Por la ruta o el nombre del fichero (dentro del texto); por el nombre sin
+    sufijo como palabra entera del guardián; o por el prefijo del módulo de
+    Rust. En Go, el prefijo del paquete casaría con todas las pruebas del
+    paquete al editar cualquiera de sus ficheros: con `go_tests` (prueba →
+    fichero) sólo casa la prueba que vive en el fichero de ese nombre."""
+    if c["rel"] in guard or c["base"] in guard:
+        return True
+    if c.get("rust") and guard.startswith(c["rust"]):
+        return True
+    if c.get("go") and guard.startswith(c["go"]):
+        test = GUARD_SPLIT.split(guard[len(c["go"]):])[0]
+        if go_tests is None:
+            return True
+        where = go_tests.get(test)
+        if where:
+            stem = TEST_SUFFIX.sub("", os.path.splitext(where.rsplit("/", 1)[-1])[0])
+            return stem == c["stem"]
+        return False
+    if c["ext"] in (".rs", ".go") or len(c["stem"]) < MIN_STEM:
+        return False
+    return c["stem"] in GUARD_SPLIT.split(guard)
+
+
+def guards_for(rel, found, go_tests=None):
+    """Los incidentes con alguna prueba que vive en `rel`, en el orden en que
+    vienen, cada uno una vez y con el primer guardián que casa."""
+    c = guard_candidates(rel)
+    out = []
+    for inc in found:
+        for g in inc.get("guards") or []:
+            if guard_matches(c, g, go_tests):
+                out.append((inc, g))
+                break
+    return out
+
+
+def go_test_index(root, pkg_dir):
+    """Las pruebas de un paquete de Go y su fichero: `TestFoo → incident_test.go`.
+    Con `git grep`, en milisegundos; vacío ante cualquier fallo."""
+    out = {}
+    for line in git(root, "grep", "-n", "^func Test", "--", f"{pkg_dir}/*_test.go").splitlines():
+        path, _, rest = line.partition(":")
+        m = re.search(r"func (Test\w+)", rest)
+        if m:
+            out[m.group(1)] = path
+    return out

@@ -13,7 +13,9 @@ con un commit que nombra una tarea sin handoff posterior; bloquear otra vez con
 handoff a una tarea ya hecha; no enseñar al arrancar lo abierto que puede
 morder; que el prompt no traiga lo que mordió en lo que nombra, lo traiga por
 una palabra de dos letras o a medias, lo repita en la misma sesión, o no
-refresque el vocabulario viejo.
+refresque el vocabulario viejo; y que al editar un fichero no salgan los
+incidentes cuya prueba vive ahí, salgan los de otro fichero por casar a medias,
+se impriman en texto plano (no le llegan al modelo) o aprueben la edición.
 """
 import json
 import os
@@ -25,6 +27,9 @@ import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+from cac_hooks import go_test_index, guards_for  # noqa: E402
+
 ANSWERS = {}
 
 
@@ -237,6 +242,95 @@ class Hooks(unittest.TestCase):
         ANSWERS["/api/v1/tasks/by-ref/"] = (200, {"task": {}})
         r = run_hook("cac-handoff", {"cwd": other, "stop_hook_active": False}, self.env)
         self.assertEqual((r.returncode, r.stdout), (0, ""))
+
+    # ── cac-edit ──
+
+    EDIT_INCIDENTS = [
+        {"id": "inc-3", "title": "verificando para siempre", "status": "open",
+         "guards": ["app/src/pages/servers/ServerProvision.test.tsx «correr una autorizada»"]},
+        {"id": "inc-4", "title": "cert-manager no limpia", "status": "fixed", "servers": [{"name": "gstd"}],
+         "guards": ["ansible::tests::cert_manager_can_clean_its_cloudflare_challenge"]},
+    ]
+
+    def edit(self, rel, session="e-1"):
+        r = run_hook("cac-edit", {"session_id": session, "cwd": self.repo, "hook_event_name": "PreToolUse",
+                                  "tool_name": "Edit", "tool_input": {"file_path": os.path.join(self.repo, rel)}}, self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def test_editing_a_file_brings_the_incidents_whose_test_lives_there(self):
+        self.fresh_vocabulary(self.EDIT_INCIDENTS)
+        out = self.edit("app/src/pages/servers/ServerProvision.tsx")
+        got = json.loads(out)["hookSpecificOutput"]
+        self.assertEqual(got["hookEventName"], "PreToolUse")
+        self.assertIn("[abierto] verificando para siempre", got["additionalContext"])
+        self.assertIn("get_incident inc-3", got["additionalContext"])
+        self.assertNotIn("inc-4", got["additionalContext"])
+        self.assertNotIn("permissionDecision", got, "el hook no aprueba ediciones")
+        self.assertNotIn("t-prueba", out)
+
+    def test_an_incident_already_shown_by_the_prompt_is_not_repeated_on_edit(self):
+        self.fresh_vocabulary(self.EDIT_INCIDENTS)
+        self.assertIn("inc-4", self.prompt("toca gstd", session="e-2"))
+        self.assertEqual(self.edit("app/src-tauri/src/ansible.rs", session="e-2"), "")
+        self.assertIn("inc-4", self.edit("app/src-tauri/src/ansible.rs", session="e-3"))
+
+    def test_editing_a_file_without_guards_or_outside_the_repo_says_nothing(self):
+        # Uno cuyo guardián nombra un fichero de fuera: que no salga dice que
+        # se mira el repo, no sólo el nombre.
+        self.fresh_vocabulary(self.EDIT_INCIDENTS + [{"id": "inc-5", "title": "fuera", "guards": ["/etc/hosts"]}])
+        self.assertEqual(self.edit("app/src/lib/month.ts", session="e-4"), "")
+        r = run_hook("cac-edit", {"session_id": "e-4", "cwd": self.repo,
+                                  "tool_input": {"file_path": "/etc/hosts"}}, self.env)
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
+        r = run_hook("cac-edit", {"session_id": "e-4", "cwd": self.repo, "tool_input": {}}, self.env)
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
+
+
+class Guards(unittest.TestCase):
+    """El casado de un fichero con los guardianes, sin cac (cac_hooks.guards_for)."""
+
+    def ids(self, rel, guards, go_tests=None):
+        found = [{"id": f"i{n}", "guards": g} for n, g in enumerate(guards)]
+        return [inc["id"] for inc, _ in guards_for(rel, found, go_tests)]
+
+    def test_a_component_matches_the_test_of_the_same_name(self):
+        g = [["app/src/pages/servers/ServerProvision.test.tsx «correr una autorizada»"]]
+        self.assertEqual(self.ids("app/src/pages/servers/ServerProvision.tsx", g), ["i0"])
+        self.assertEqual(self.ids("app/src/pages/servers/ServerProvision.test.tsx", g), ["i0"])
+
+    def test_a_guard_named_by_its_file_alone_matches(self):
+        self.assertEqual(self.ids("app/src/pages/servers/ServerConfig.tsx", [["ServerConfig.test.tsx («aplicar es ensayar»)"]]), ["i0"])
+
+    def test_rust_matches_by_module_not_by_a_word_inside(self):
+        g = [["ansible::tests::cert_manager_can_clean_its_cloudflare_challenge"],
+             ["ansible::tests::every_host_is_reachable"]]
+        self.assertEqual(self.ids("app/src-tauri/src/ansible.rs", g), ["i0", "i1"])
+        self.assertEqual(self.ids("app/src-tauri/src/host.rs", g), [], "«host» dentro de un nombre no es host.rs")
+
+    def test_go_matches_by_package_and_by_the_file_of_the_test(self):
+        g = [["service.TestTheListAndTheMapCarryTheGuards"], ["repository.TestNadieResuelveElNombreASuAire"]]
+        tests = {"TestTheListAndTheMapCarryTheGuards": "backend/internal/core/service/incident_test.go"}
+        self.assertEqual(self.ids("backend/internal/core/service/incident.go", g, tests), ["i0"])
+        self.assertEqual(self.ids("backend/internal/core/service/task.go", g, tests), [],
+                         "otra prueba del paquete no es de este fichero")
+        self.assertEqual(self.ids("backend/internal/core/service/task.go", g), ["i0"], "sin el mapa, el paquete basta")
+        self.assertEqual(self.ids("backend/internal/core/service/incident_test.go", g, tests), ["i0"],
+                         "editar el fichero de la prueba también la trae")
+
+    def test_a_go_file_named_by_its_name_matches(self):
+        self.assertEqual(self.ids("backend/internal/core/service/incident_test.go",
+                                  [["incident_test.go (TestTheListAndTheMapCarryTheGuards)"]]), ["i0"])
+
+    def test_the_go_index_finds_each_test_in_its_file(self):
+        # Sobre este mismo repo: la prueba de la que depende el casado en Go.
+        root = os.path.dirname(os.path.dirname(HERE))
+        idx = go_test_index(root, "backend/internal/core/service")
+        self.assertEqual(idx.get("TestTheListAndTheMapCarryTheGuards"), "backend/internal/core/service/incident_test.go")
+
+    def test_an_incident_with_two_matching_guards_comes_once(self):
+        g = [["ansible::tests::a", "ansible::tests::b"]]
+        self.assertEqual(self.ids("app/src-tauri/src/ansible.rs", g), ["i0"])
 
 
 if __name__ == "__main__":

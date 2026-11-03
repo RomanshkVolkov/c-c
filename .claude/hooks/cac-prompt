@@ -15,55 +15,16 @@ El vocabulario son los nombres de servidores y áreas que **tienen** incidentes
 `VOCAB_TTL` segundos y se compara en local. Lo que imprime entra en el
 contexto; si no casa nada, no imprime nada. Ante cualquier fallo, calla.
 """
-import json
 import os
 import re
 import sys
-import time
-import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cac_hooks import api, cac_config, read_input  # noqa: E402
+from cac_hooks import cac_config, fold, incidents, load_seen, read_input, save_seen  # noqa: E402
 
-VOCAB_TTL = 15 * 60
 MAX_LINES = 8
 # Un nombre de dos letras («ui», «db») casaría con medio idioma.
 MIN_TERM = 3
-
-
-def cache_dir():
-    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
-    d = os.path.join(base, "cac-hooks")
-    os.makedirs(d, exist_ok=True)
-    return d
-
-
-def fold(s):
-    """Minúsculas y sin acentos: «Kubernetes» y «kubernetes», «ñ» y «n»."""
-    s = unicodedata.normalize("NFKD", s.lower())
-    return "".join(c for c in s if not unicodedata.combining(c))
-
-
-def incidents(cfg):
-    """Los incidentes vigentes de las orgs del token, cacheados. Sin cuerpo."""
-    path = os.path.join(cache_dir(), "incidents.json")
-    try:
-        with open(path, encoding="utf-8") as f:
-            cached = json.load(f)
-        if time.time() - cached.get("at", 0) < VOCAB_TTL:
-            return cached.get("incidents") or []
-    except (OSError, ValueError):
-        pass
-    data = api(cfg, "/api/v1/incidents/?limit=200")
-    if data is None:
-        return []
-    found = data.get("incidents") or []
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump({"at": time.time(), "incidents": found}, f)
-    except OSError:
-        pass
-    return found
 
 
 def terms_of(inc):
@@ -75,36 +36,6 @@ def named(prompt, term):
     """Si el prompt nombra el término como palabra entera: «gstd» sí casa en
     «en gstd falla», no en «gstdx»; «cert-manager» casa tal cual."""
     return re.search(r"(?<![a-z0-9])" + re.escape(term) + r"(?![a-z0-9])", prompt) is not None
-
-
-def seen_path(session):
-    safe = re.sub(r"[^A-Za-z0-9_-]", "", session or "")[:80] or "sin-sesion"
-    return os.path.join(cache_dir(), f"seen-{safe}.json")
-
-
-def load_seen(session):
-    try:
-        with open(seen_path(session), encoding="utf-8") as f:
-            return set(json.load(f))
-    except (OSError, ValueError):
-        return set()
-
-
-def save_seen(session, ids):
-    try:
-        with open(seen_path(session), "w", encoding="utf-8") as f:
-            json.dump(sorted(ids), f)
-    except OSError:
-        pass
-    # Lo de sesiones de hace más de un día ya no sirve a nadie.
-    d = cache_dir()
-    for name in os.listdir(d):
-        p = os.path.join(d, name)
-        if name.startswith("seen-") and time.time() - os.path.getmtime(p) > 86400:
-            try:
-                os.remove(p)
-            except OSError:
-                pass
 
 
 def lines_for(prompt, found, seen):

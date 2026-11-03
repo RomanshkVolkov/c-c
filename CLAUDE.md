@@ -242,7 +242,10 @@ python3 .claude/hooks/hooks_test.py                                 # los hooks 
 al arrancar meten en el contexto el espacio, lo que está en curso con su
 «dónde quedó» y las trampas abiertas; en cada prompt que nombra un servidor o
 un área que ya mordió (`gstd`, `cert-manager`…), le ponen delante esos
-incidentes, una vez por sesión (`cac-prompt`); y al parar no dejan irse sin
+incidentes, una vez por sesión (`cac-prompt`); al editar un fichero, los
+incidentes cuya prueba guardián vive ahí (`cac-edit`, por la ruta, el nombre,
+el módulo de Rust o el paquete de Go del guardián; la misma «una vez por
+sesión» que `cac-prompt`); y al parar no dejan irse sin
 escribir el handoff de la tarea que nombran los commits de la sesión. El mismo `settings.json` está en la
 raíz, en `app/` y en `backend/` porque Claude Code sólo lee el de la carpeta
 donde se abre; los scripts buscan la raíz con git.
