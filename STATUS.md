@@ -37,6 +37,11 @@ de cac» del espacio). Lo que pixel-vps enseñó, corregido en `infra/ansible`:
   WAL y backup diario al bucket `guz-cnpg-backups` (Terraform). Restauración
   probada: un Cluster temporal desde S3 trajo una marca escrita después del
   backup. El verify espera 30 min (`29c13ed`): el primer arranque tardó 19.
+- **D** (304) **aplicada el 4-nov**: Valkey 9.0.7 oficial por digest en
+  `data` (`08d2cfb`), contraseña por config montado, AOF en un PVC de 2Gi,
+  sin Sentinel. Persistencia probada borrando el pod.
+- Una petición cuya verificación falló se puede **volver a verificar**
+  (backend `9c0b2f3`, desplegado; botón en la app `42fb580`, sin release).
 - **C** (303, `ff815c9`): Postgres como playbook propio `cnpg` (operador
   1.30.1, plugin barman-cloud, una instancia en `data`, WAL y backup diario a
   S3 con verify) y `infra/terraform/cnpg-backups`. Sin aplicar: faltan el
