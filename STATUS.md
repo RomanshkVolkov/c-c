@@ -45,6 +45,12 @@ de cac» del espacio). Lo que pixel-vps enseñó, corregido en `infra/ansible`:
   con la GitHub App de la org, definido en `g-studio-labs/actions-runner` e
   instalado con el playbook `runner` (`b394677`). Smoke en verde. La salida
   IPv6 de gstd cortaba las descargas de GHCR: `block_ipv6_egress` (`5e0a4c1`).
+- **F** (306) **aplicada el 4-nov**: cac corre en gstd (namespace `cac`,
+  base aún vacía) desplegado desde el runner `gstd` (`deploy-gstd` en
+  backend/web/transcriber, `GSTD_DEPLOY=true`). **Ningún secreto en GitHub**:
+  los pone el playbook `cac-secrets` desde el ítem «cac prod» de 1Password
+  (la cuenta Familia no permite service accounts; decisión ace5261d). pixel-vps
+  sigue en producción hasta la mudanza (G, 307).
 - Una petición cuya verificación falló se puede **volver a verificar**
   (backend `9c0b2f3`, desplegado; botón en la app `42fb580`, sin release).
 - **C** (303, `ff815c9`): Postgres como playbook propio `cnpg` (operador
