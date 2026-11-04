@@ -67,6 +67,11 @@ playbooks:
         description: Las llaves públicas que entran como el usuario de operación.
         type: list
         required: true
+      - name: block_ipv6_egress
+        description: >-
+          Rechazar toda salida por IPv6 (todo sale por IPv4). Para un servidor
+          cuya red IPv6 corta las descargas, como gstd con GHCR.
+        default: false
       - name: public_ip
         description: La IP pública del servidor.
         required: true

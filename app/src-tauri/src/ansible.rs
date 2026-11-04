@@ -2045,6 +2045,30 @@ playbooks:
         assert!(verify.contains("can-i --list --as=system:serviceaccount:arc-runners:arc-runner"), "el verify no mira los permisos de los pods");
     }
 
+    // En gstd la salida por IPv6 cortaba las capas grandes de GHCR a medias
+    // (incidente 4b2b4ad0). Se rechaza desde ufw, sólo donde se pide. Roturas
+    // que atrapa: encenderlo para todos los servidores; `deny` en vez de
+    // `reject` (cada conexión esperaría su timeout antes de pasar a IPv4);
+    // rechazar también la entrada o la salida IPv4; quitarle la guarda.
+    #[test]
+    fn ipv6_egress_is_rejected_only_where_asked() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let m = parse_manifest(&std::fs::read_to_string(root.join(MANIFEST_FILE)).unwrap()).unwrap();
+        let baseline = m.playbooks.iter().find(|p| p.id == "baseline").unwrap();
+        let var = baseline.vars.iter().find(|v| v.name == "block_ipv6_egress").expect("baseline no declara block_ipv6_egress");
+        assert_eq!(var.default, Some(serde_json::json!(false)), "se rechaza IPv6 en todos los servidores");
+
+        let tasks = ansible_tasks(&std::fs::read_to_string(root.join("roles/baseline/tasks/main.yml")).unwrap());
+        let rule = tasks
+            .iter()
+            .find(|t| t.get("community.general.ufw").and_then(|u| u.get("to_ip")).and_then(|v| v.as_str()) == Some("::/0"))
+            .expect("no hay regla para la salida IPv6");
+        let ufw = &rule["community.general.ufw"];
+        assert_eq!(ufw["rule"].as_str(), Some("reject"), "con deny cada conexión espera su timeout antes de pasar a IPv4");
+        assert_eq!(ufw["direction"].as_str(), Some("out"), "la regla no es de salida");
+        assert!(rule["when"].as_str().is_some_and(|w| w.contains("block_ipv6_egress")), "la regla no depende de block_ipv6_egress");
+    }
+
     // TURN y los puertos UDP de LiveKit son opcionales: un servidor sin voz
     // no abre nada. Y la verificación espera a TODOS los certificados, no
     // sólo al primero. Roturas que atrapa: el listener turn-tls sin su

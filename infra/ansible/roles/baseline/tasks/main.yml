@@ -68,6 +68,22 @@
     direction: outgoing
     default: allow
 
+# En gstd la salida por IPv6 corta las descargas grandes a medias («connection
+# reset by peer»): una capa de 308 MB de GHCR se cortó a los 201 MB por IPv6 y
+# bajó entera las cuatro veces por IPv4 (4-nov-2026, incidente 4b2b4ad0).
+# containerd, como todo programa en Go, prefiere IPv6 si el destino lo tiene.
+# Con `reject` (no `deny`) la conexión IPv6 falla al instante y Go, curl o apt
+# pasan a IPv4 sin esperar. No se toca la red (el netplan de Contabo): un
+# error ahí deja el servidor sin SSH. Lo de `lo` y el ICMPv6 de vecinos los
+# deja pasar ufw antes de estas reglas.
+- name: Sin salida por IPv6
+  community.general.ufw:
+    rule: reject
+    direction: out
+    to_ip: "::/0"
+    comment: cac - IPv6 egress cuts large downloads (4b2b4ad0)
+  when: block_ipv6_egress | default(false) | bool
+
 - name: Entra sólo lo permitido, y encender
   community.general.ufw:
     direction: incoming
