@@ -15,7 +15,9 @@ Playbooks para dejar un servidor listo desde cero, por etapas:
    clúster `postgres` de una instancia en `data`, WAL archivado y backup
    diario a S3; ver `infra/terraform/cnpg-backups`) y **Valkey** (`valkey`:
    el bus de cac-service, imagen oficial fijada por digest, contraseña desde
-   1Password, AOF en un PVC, sin Sentinel).
+   1Password, AOF en un PVC, sin Sentinel) y el **runner de GitHub Actions**
+   (`runner`: ARC con un scale set registrado por una GitHub App, un pod por
+   job; la imagen y el uso están en `g-studio-labs/actions-runner`).
 
 Los dos emiten un certificado wildcard `*.<base_domain>` por reto DNS en
 Cloudflare, y dejan un `whoami.<base_domain>` como prueba de humo. En

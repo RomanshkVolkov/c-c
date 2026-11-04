@@ -1998,6 +1998,53 @@ playbooks:
         assert!(verify.contains("NOAUTH") && verify.contains("PONG") && verify.contains("appendonly"), "el verify no prueba la negativa, el PONG o el AOF");
     }
 
+    // El runner de GitHub Actions (ARC), como el `dwit-kb` de Dwit: su propio
+    // playbook con la GitHub App como secreto, controlador y scale set con la
+    // misma versión, un pod por job con dind, y una cuenta de servicio sin
+    // permisos (cualquier permiso suyo lo tendría todo job de todo repo).
+    // Roturas que atrapa: meter el runner en `k8s`; versiones distintas para
+    // los dos charts; runners siempre encendidos; la llave fuera de stdin o
+    // sin no_log; un RoleBinding o ClusterRoleBinding para `arc-runner`; un
+    // verify que no mira el listener o los permisos.
+    #[test]
+    fn the_runner_is_its_own_playbook_and_its_pods_have_no_permissions() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let m = parse_manifest(&std::fs::read_to_string(root.join(MANIFEST_FILE)).unwrap()).unwrap();
+        let k8s = m.playbooks.iter().find(|p| p.id == "k8s").unwrap();
+        assert!(!k8s.vars.iter().any(|v| v.name.starts_with("runner") || v.name == "install_runner"), "el runner vive dentro de k8s");
+        let runner = m.playbooks.iter().find(|p| p.id == "runner").expect("sin playbook runner");
+        assert_eq!((runner.risk.as_deref(), runner.verify.as_deref()), (Some(RISK_CHANGE), Some("runner-verify")));
+        for secret in ["ARC_GITHUB_APP_ID", "ARC_GITHUB_APP_INSTALLATION_ID", "ARC_GITHUB_APP_PRIVATE_KEY"] {
+            assert!(runner.vars.iter().any(|v| v.secret && v.from.as_deref() == Some(secret)), "runner no declara el secreto {secret}");
+        }
+
+        let role = std::fs::read_to_string(root.join("roles/runner/tasks/main.yml")).unwrap();
+        let tasks = ansible_tasks(&role);
+        let charts: Vec<&serde_yaml::Value> = tasks.iter().filter_map(|t| t.get("kubernetes.core.helm")).collect();
+        assert_eq!(charts.len(), 2, "no son el controlador y el scale set");
+        for c in &charts {
+            assert_eq!(c["chart_version"].as_str(), Some("{{ runner_arc_version }}"), "un chart de ARC no va con runner_arc_version");
+        }
+        let secret = tasks
+            .iter()
+            .find(|t| t.get("ansible.builtin.shell").and_then(|s| s.get("stdin")).and_then(|s| s.as_str()).is_some_and(|s| s.contains("github_app_private_key")))
+            .expect("la llave de la App no entra por stdin");
+        assert_eq!(secret["no_log"].as_bool(), Some(true), "la llave de la App sale en el log");
+        // Sobre las tareas parseadas, no el texto: un comentario que lo nombre no cuenta.
+        assert!(!tasks.iter().any(|t| serde_yaml::to_string(t).unwrap().contains("RoleBinding")), "el rol le da permisos a la cuenta de los runners");
+
+        let values = std::fs::read_to_string(root.join("roles/runner/templates/runner-values.yaml.j2")).unwrap();
+        let v: serde_yaml::Value = serde_yaml::from_str(&values.replace("{{ runner_max }}", "3")).unwrap();
+        assert_eq!(v["minRunners"].as_i64(), Some(0), "hay runners encendidos sin jobs");
+        assert_eq!(v["containerMode"]["type"].as_str(), Some("dind"), "sin Docker en el job");
+        assert_eq!(v["githubConfigSecret"].as_str(), Some("arc-github"));
+        assert_eq!(v["template"]["spec"]["serviceAccountName"].as_str(), Some("arc-runner"), "los pods no usan la cuenta sin permisos");
+
+        let verify = std::fs::read_to_string(root.join("playbooks/runner-verify.yml")).unwrap();
+        assert!(verify.contains("runner-scale-set") || verify.contains("scale-set-name"), "el verify no mira el listener");
+        assert!(verify.contains("can-i --list --as=system:serviceaccount:arc-runners:arc-runner"), "el verify no mira los permisos de los pods");
+    }
+
     // TURN y los puertos UDP de LiveKit son opcionales: un servidor sin voz
     // no abre nada. Y la verificación espera a TODOS los certificados, no
     // sólo al primero. Roturas que atrapa: el listener turn-tls sin su

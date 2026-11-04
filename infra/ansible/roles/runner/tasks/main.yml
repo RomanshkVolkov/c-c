@@ -1,0 +1,91 @@
+---
+- name: ¿Está el controlador?
+  ansible.builtin.stat:
+    path: /etc/cac/runner-values.yaml
+  register: runner_values_file
+
+- name: Lo que el ensayo no puede ver
+  ansible.builtin.set_fact:
+    runner_rehearsal_blind: "{{ ansible_check_mode and not runner_values_file.stat.exists }}"
+
+- name: Ensayo parcial
+  ansible.builtin.debug:
+    msg: >-
+      Este clúster aún no tiene ARC: el ensayo enseña el controlador, los
+      namespaces, la cuenta de servicio y el secreto, pero no el scale set
+      (sus CRD los instala este mismo playbook). Eso sólo se ve corriéndolo.
+  when: runner_rehearsal_blind
+
+- name: Hay imagen del runner
+  ansible.builtin.assert:
+    that: runner_image | default('') | length > 0
+    fail_msg: >-
+      Falta runner_image: la etiqueta que publicó el workflow `imagen` de
+      g-studio-labs/actions-runner (ghcr.io/g-studio-labs/actions-runner:<fecha>-<sha>).
+    quiet: true
+
+# Controlador y scale set con la misma versión: ARC no admite mezclarlas.
+- name: Controlador de ARC {{ runner_arc_version }}
+  kubernetes.core.helm:
+    name: arc
+    chart_ref: oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller
+    chart_version: "{{ runner_arc_version }}"
+    release_namespace: arc-systems
+    create_namespace: true
+    wait: true
+
+- name: Namespace de los runners
+  ansible.builtin.shell:
+    cmd: kubectl create namespace arc-runners --dry-run=client -o yaml | kubectl apply --server-side --force-conflicts -f -
+  register: runners_ns
+  changed_when: "'serverside-applied' in runners_ns.stdout and 'unchanged' not in runners_ns.stdout"
+
+# Sin permisos propios: cada app que se despliegue desde el runner le da un
+# RoleBinding en SU namespace, desde su repo. Un permiso de clúster aquí lo
+# tendría cualquier job de cualquier repo que use el runner.
+- name: Cuenta de servicio de los pods runner
+  ansible.builtin.shell:
+    cmd: kubectl apply --server-side --force-conflicts -f -
+    stdin: |
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata: {name: arc-runner, namespace: arc-runners}
+    stdin_add_newline: false
+  register: runner_sa
+  changed_when: "'serverside-applied' in runner_sa.stdout and 'unchanged' not in runner_sa.stdout"
+
+# La llave es un PEM de varias líneas: va en `data:` ya en base64 para que no
+# rompa el YAML (como 1-secret-github.sh de Dwit), por stdin y del lado del
+# servidor, sin pasar por la línea de comandos ni por last-applied.
+- name: Secreto de la GitHub App
+  ansible.builtin.shell:
+    cmd: kubectl apply --server-side --force-conflicts -f -
+    stdin: |
+      apiVersion: v1
+      kind: Secret
+      metadata: {name: arc-github, namespace: arc-runners}
+      type: Opaque
+      data:
+        github_app_id: "{{ runner_github_app_id | string | b64encode }}"
+        github_app_installation_id: "{{ runner_github_app_installation_id | string | b64encode }}"
+        github_app_private_key: "{{ runner_github_app_private_key | b64encode }}"
+    stdin_add_newline: false
+  register: runner_secret
+  changed_when: "'serverside-applied' in runner_secret.stdout and 'unchanged' not in runner_secret.stdout"
+  no_log: true
+
+- name: Values del scale set
+  ansible.builtin.template:
+    src: runner-values.yaml.j2
+    dest: /etc/cac/runner-values.yaml
+    mode: "0600"
+
+- name: Scale set {{ runner_scale_set_name }} (ARC {{ runner_arc_version }})
+  kubernetes.core.helm:
+    name: "{{ runner_scale_set_name }}"
+    chart_ref: oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+    chart_version: "{{ runner_arc_version }}"
+    release_namespace: arc-runners
+    values_files: [/etc/cac/runner-values.yaml]
+    wait: true
+  when: not runner_rehearsal_blind

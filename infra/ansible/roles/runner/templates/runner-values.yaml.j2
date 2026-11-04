@@ -1,0 +1,34 @@
+# {{ ansible_managed }}
+# Runner scale set de GitHub Actions (chart gha-runner-scale-set). Un solo
+# scale set para los repos de la org; los workflows lo usan con
+# `runs-on: {{ runner_scale_set_name }}`.
+githubConfigUrl: "{{ runner_github_config_url }}"
+githubConfigSecret: arc-github
+
+# El controlador es la release `arc` de arc-systems; explícito para que el
+# chart no tenga que adivinarlo.
+controllerServiceAccount:
+  namespace: arc-systems
+  name: arc-gha-rs-controller
+
+runnerScaleSetName: "{{ runner_scale_set_name }}"
+# Un pod por job, sólo mientras corre.
+minRunners: 0
+maxRunners: {{ runner_max }}
+
+# Docker dentro del job (docker/build-push-action). El sidecar corre
+# privilegiado: aceptable porque el nodo es nuestro y el runner sólo toma jobs
+# de los repos de su grupo, nunca de un pull_request.
+containerMode:
+  type: dind
+
+template:
+  spec:
+    serviceAccountName: arc-runner
+    containers:
+      - name: runner
+        image: "{{ runner_image }}"
+        command: ["/home/runner/run.sh"]
+        resources:
+          requests: {cpu: 500m, memory: 1Gi}
+          limits: {memory: 4Gi}

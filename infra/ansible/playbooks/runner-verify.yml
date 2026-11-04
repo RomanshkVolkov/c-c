@@ -1,0 +1,51 @@
+---
+# Comprueba que el controlador de ARC está listo, que el listener del scale
+# set está conectado a GitHub y que la cuenta de los pods no tiene permisos
+# propios. No cambia nada.
+- name: Verificar el runner
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Controlador listo
+      ansible.builtin.command: kubectl -n arc-systems rollout status deploy/arc-gha-rs-controller --timeout=300s
+      changed_when: false
+      check_mode: false
+
+    # El listener es el pod que habla con GitHub: si no está Running, la App
+    # no autentica (llave, app_id o installation_id) o el scale set no se
+    # registró en la org.
+    - name: El listener del scale set está arriba
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl -n arc-systems get pods -l actions.github.com/scale-set-name={{ runner_scale_set_name }}
+          -o jsonpath='{.items[*].status.phase}'
+      register: listener
+      changed_when: false
+      check_mode: false
+      until: "'Running' in listener.stdout"
+      retries: 30
+      delay: 10
+
+    - name: La cuenta de los pods runner no tiene permisos propios
+      # Lo que todo usuario autenticado puede: crear selfsubject*Reviews y leer
+      # URLs como /api o /healthz (esas filas no tienen recurso). Cualquier
+      # otro recurso es un permiso que alguien le dio, y lo tendría todo job.
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl auth can-i --list --as=system:serviceaccount:arc-runners:arc-runner -n default
+          | awk 'NR > 1 && $1 !~ /^\[/ && $1 !~ /^selfsubject/'
+      register: perms
+      changed_when: false
+      check_mode: false
+      failed_when: perms.rc != 0 or perms.stdout | length > 0
+
+    - name: Estado
+      ansible.builtin.command: kubectl get autoscalingrunnersets,pods -n arc-runners
+      register: state
+      changed_when: false
+      check_mode: false
+
+    - name: Resultado
+      ansible.builtin.debug:
+        var: state.stdout_lines

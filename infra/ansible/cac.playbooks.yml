@@ -296,6 +296,49 @@ playbooks:
     become: true
     become_password_from: OPS_PASSWORD
 
+  - id: runner
+    file: playbooks/runner-site.yml
+    name: Runner de GitHub Actions
+    description: >-
+      Encima de k8s: el controlador de ARC y un runner scale set registrado en
+      la org de GitHub con su GitHub App, un pod por job con Docker (dind) y
+      una cuenta de servicio sin permisos. Idempotente. Trae sus propios secretos.
+    hosts: k8s_control_plane
+    risk: change
+    verify: runner-verify
+    # Quitarlo es desinstalar dos charts y sus CRD; se decide a mano.
+    rollback: manual
+    become: true
+    become_password_from: OPS_PASSWORD
+    vars:
+      # Controlador y scale set van con la misma versión: ARC no admite mezclarlas.
+      - { name: runner_arc_version, description: Versión de los charts de ARC (controlador y scale set)., default: "0.15.1" }
+      - { name: runner_image, description: "Imagen de los pods runner (ghcr.io/g-studio-labs/actions-runner:<fecha>-<sha>, la publica su workflow `imagen`).", required: true }
+      - { name: runner_github_config_url, description: "La org (o el repo) de GitHub donde se registra el scale set.", required: true }
+      - { name: runner_scale_set_name, description: "El nombre del scale set: lo que va en `runs-on`.", required: true }
+      - { name: runner_max, description: Cuántos jobs a la vez como mucho., default: 3 }
+      - name: runner_github_app_id
+        secret: true
+        from: ARC_GITHUB_APP_ID
+      - name: runner_github_app_installation_id
+        secret: true
+        from: ARC_GITHUB_APP_INSTALLATION_ID
+      - name: runner_github_app_private_key
+        description: La llave PEM de la GitHub App del runner.
+        secret: true
+        from: ARC_GITHUB_APP_PRIVATE_KEY
+
+  - id: runner-verify
+    file: playbooks/runner-verify.yml
+    name: Verificar el runner
+    description: Controlador listo, listener del scale set conectado a GitHub y la cuenta de los pods sin permisos. No cambia nada.
+    hosts: k8s_control_plane
+    risk: read
+    become: true
+    become_password_from: OPS_PASSWORD
+    vars:
+      - { name: runner_scale_set_name, required: true }
+
   - id: k8s-teardown
     file: playbooks/k8s-teardown.yml
     name: Desmontar Kubernetes

@@ -1,0 +1,18 @@
+---
+# El runner de GitHub Actions de G Studio, encima de un clúster hecho por
+# k8s-site: el controlador de ARC en `arc-systems` y el runner scale set
+# `gstd` en `arc-runners`, registrado en la org con la GitHub App de jose.
+# Idempotente. Playbook aparte de `k8s` porque trae sus secretos (la App).
+#
+# La imagen de los pods y su documentación de uso están en
+# github.com/g-studio-labs/actions-runner; los values los genera este rol
+# desde la config del servidor en cac (sin otra credencial de GitHub para
+# leerlos de un repo privado).
+#
+# El ensayo en un clúster sin ARC es parcial: los CRD los instala el propio
+# playbook, así que el scale set no se puede ensayar hasta que estén.
+- name: Runner de GitHub Actions (ARC)
+  hosts: k8s_control_plane
+  become: true
+  roles:
+    - {role: runner, tags: [runner]}
