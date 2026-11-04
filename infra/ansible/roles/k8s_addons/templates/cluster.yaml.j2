@@ -73,15 +73,28 @@ spec:
 {% endfor %}
       allowedRoutes: {namespaces: {from: All}}
 {% if livekit_turn_host | default('') | length > 0 %}
-    # El TURN de LiveKit por el 443: TLS sin terminar, Envoy sólo mira el SNI
-    # y lo pasa entero (un TLSRoute de la app lo recoge). Convive con https en
-    # el mismo puerto porque este listener tiene hostname y el otro no.
+{% set turn = namespace(zone='') %}
+{% for d in cert_domains if livekit_turn_host == d or livekit_turn_host.endswith('.' ~ d) %}
+{% if d | length > turn.zone | length %}{% set turn.zone = d %}{% endif %}
+{% endfor %}
+    # El TURN de LiveKit por el 443 (TURN/TLS, para quien sólo sale por 443):
+    # **Envoy termina el TLS** con el certificado de su zona y pasa el TURN en
+    # claro a LiveKit por un TCPRoute, que es lo que LiveKit espera
+    # (`turn.external_tls: true` en backend/k8s/5-livekit.yaml). Igual que en
+    # pixel-vps. En Passthrough llegaría TLS a un puerto que habla TURN plano y
+    # ninguna llamada por TURN/TLS conectaría (gstd, 4-nov-2026, antes de
+    # mudar cac). Convive con https en el 443 porque tiene hostname.
     - name: turn-tls
       protocol: TLS
       port: 443
       hostname: {{ livekit_turn_host }}
-      tls: {mode: Passthrough}
-      allowedRoutes: {namespaces: {from: All}}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - {name: tls-{{ turn.zone | replace('.', '-') }}, namespace: default}
+      allowedRoutes:
+        kinds: [{group: gateway.networking.k8s.io, kind: TCPRoute}]
+        namespaces: {from: All}
 {% endif %}
 ---
 apiVersion: cert-manager.io/v1

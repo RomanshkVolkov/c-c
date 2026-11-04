@@ -2150,7 +2150,8 @@ playbooks:
     // TURN y los puertos UDP de LiveKit son opcionales: un servidor sin voz
     // no abre nada. Y la verificación espera a TODOS los certificados, no
     // sólo al primero. Roturas que atrapa: el listener turn-tls sin su
-    // guarda, o terminando el TLS; los puertos UDP sin su variable o por TCP;
+    // guarda, en Passthrough (LiveKit espera TURN en claro), sin el
+    // certificado de su zona o sin admitir TCPRoute; los puertos UDP sin su variable o por TCP;
     // un verify que sólo mira un certificado.
     #[test]
     fn turn_and_udp_are_opt_in_and_verify_waits_for_every_certificate() {
@@ -2159,7 +2160,13 @@ playbooks:
         let guard = t.find("{% if livekit_turn_host").expect("el listener turn-tls no es opcional");
         let turn = t.find("name: turn-tls").expect("sin listener turn-tls");
         let end = t[turn..].find("{% endif %}").map(|e| turn + e).expect("el listener turn-tls no cierra su guarda");
-        assert!(guard < turn && t[turn..end].contains("mode: Passthrough"), "el TURN no pasa entero por SNI");
+        // Envoy termina el TLS y pasa el TURN en claro: es lo que LiveKit
+        // espera (`external_tls: true`). En Passthrough no conectaba nada.
+        let listener = &t[turn..end];
+        assert!(guard < turn && listener.contains("mode: Terminate"), "el TURN no termina el TLS en Envoy");
+        assert!(!listener.contains("Passthrough"), "el TURN vuelve a Passthrough");
+        assert!(listener.contains("certificateRefs") && listener.contains("turn.zone"), "el TURN no usa el certificado de su zona");
+        assert!(listener.contains("kind: TCPRoute"), "el listener del TURN no admite el TCPRoute de LiveKit");
         let base = ansible_tasks(&std::fs::read_to_string(root.join("roles/base/tasks/main.yml")).unwrap());
         let udp = base
             .iter()

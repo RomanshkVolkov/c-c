@@ -146,6 +146,22 @@
       sin wildcard, por HTTP-01.
     quiet: true
 
+# El listener turn-tls termina el TLS con el certificado de la zona del nombre
+# de TURN: tiene que haber uno que lo cubra. Un wildcard cubre un nivel, así
+# que vale el propio nombre o su dominio padre (`turn.guz-studio.dev` lo cubre
+# `guz-studio.dev`; `a.turn.guz-studio.dev`, no).
+- name: El nombre de TURN tiene certificado
+  ansible.builtin.assert:
+    that: >-
+      livekit_turn_host | default('') | length == 0 or
+      ((certificates | default([])) or [base_domain])
+      | select('in', [livekit_turn_host, livekit_turn_host.split('.', 1) | last]) | list | length > 0
+    fail_msg: >-
+      {{ livekit_turn_host }} no está cubierto por ningún dominio de
+      `certificates`: añade su dominio padre para que el listener turn-tls
+      tenga con qué terminar el TLS.
+    quiet: true
+
 - name: Manifiestos del clúster
   ansible.builtin.template:
     src: "{{ item }}.j2"
