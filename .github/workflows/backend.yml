@@ -253,20 +253,19 @@ jobs:
             exit $rollout
 
   deploy-gstd:
-    # gstd, desde su runner y con los secretos del Environment «cac prod» de
-    # 1Password (command-and-control-306). Convive con el despliegue de arriba
-    # hasta la mudanza; sólo corre cuando existe la variable OP_ENVIRONMENT_PROD.
+    # gstd, desde su runner (command-and-control-306). Convive con el
+    # despliegue de arriba hasta la mudanza; sólo corre con la variable de repo
+    # GSTD_DEPLOY en `true`. Los secretos no pasan por aquí: los pone el
+    # playbook cac-secrets de infra/ansible.
     # Nunca en un pull_request: el repo es público y este job corre dentro de gstd.
-    if: vars.OP_ENVIRONMENT_PROD != '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: vars.GSTD_DEPLOY == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: gstd
     needs: build-push
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gstd-kubectl
         with: {namespace: cac}
-      - name: Secretos desde 1Password y despliegue
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          OP_ENVIRONMENT: ${{ vars.OP_ENVIRONMENT_PROD }}
-          NS: cac
-        run: op run --environment "$OP_ENVIRONMENT" -- backend/k8s/deploy.sh
+      # Sin secretos: los pone el playbook cac-secrets desde 1Password.
+      - name: Manifiestos y rollout
+        env: {NS: cac}
+        run: backend/k8s/deploy.sh

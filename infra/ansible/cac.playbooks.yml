@@ -350,6 +350,71 @@ playbooks:
     vars:
       - { name: runner_scale_set_name, required: true }
 
+  - id: cac-secrets
+    file: playbooks/cac-secrets-site.yml
+    name: Secretos de cac
+    description: >-
+      Encima de runner: los cuatro Secrets de cac (cac-secret, cac-valkey,
+      livekit-secret, recordings-mux-secret) en su namespace, desde 1Password.
+      Si alguno cambió y cac-service ya corre, lo reinicia. GitHub no ve ninguno.
+    hosts: k8s_control_plane
+    risk: change
+    verify: cac-secrets-verify
+    # Un secreto viejo se repone cambiándolo en 1Password y volviendo a pedir este.
+    rollback: manual
+    become: true
+    become_password_from: OPS_PASSWORD
+    vars:
+      - { name: cac_namespace, description: Namespace de cac., default: cac }
+      - { name: cac_database_url, secret: true, from: DATABASE_URL }
+      - { name: cac_jwt_secret_access, secret: true, from: JWT_SECRET_ACCESS }
+      - { name: cac_jwt_secret_refresh, secret: true, from: JWT_SECRET_REFRESH }
+      - { name: cac_image_service_url, secret: true, from: IMAGE_SERVICE_URL }
+      - { name: cac_image_service_cert_cn, secret: true, from: IMAGE_SERVICE_CERT_CN }
+      - { name: cac_image_service_api_key, secret: true, from: IMAGE_SERVICE_API_KEY }
+      - { name: cac_reports_media_bucket, secret: true, from: REPORTS_MEDIA_BUCKET }
+      - { name: cac_reports_media_region, secret: true, from: REPORTS_MEDIA_REGION }
+      - { name: cac_reports_media_access_key_id, secret: true, from: REPORTS_MEDIA_ACCESS_KEY_ID }
+      - { name: cac_reports_media_secret_access_key, secret: true, from: REPORTS_MEDIA_SECRET_ACCESS_KEY }
+      - { name: cac_backups_bucket, secret: true, from: BACKUPS_BUCKET }
+      - { name: cac_backups_region, secret: true, from: BACKUPS_REGION }
+      - { name: cac_backups_prefix, secret: true, from: BACKUPS_PREFIX }
+      - { name: cac_backups_access_key_id, secret: true, from: BACKUPS_ACCESS_KEY_ID }
+      - { name: cac_backups_secret_access_key, secret: true, from: BACKUPS_SECRET_ACCESS_KEY }
+      - { name: cac_email_region, secret: true, from: EMAIL_REGION }
+      - { name: cac_email_from, secret: true, from: EMAIL_FROM }
+      - { name: cac_email_configuration_set, secret: true, from: EMAIL_CONFIGURATION_SET }
+      - { name: cac_email_access_key_id, secret: true, from: EMAIL_ACCESS_KEY_ID }
+      - { name: cac_email_secret_access_key, secret: true, from: EMAIL_SECRET_ACCESS_KEY }
+      - { name: cac_ingest_key_secret, secret: true, from: INGEST_KEY_SECRET }
+      - { name: cac_reports_kek, secret: true, from: REPORTS_KEK }
+      - { name: cac_report_token_secret, secret: true, from: REPORT_TOKEN_SECRET }
+      - { name: cac_livekit_url, secret: true, from: LIVEKIT_URL }
+      - { name: cac_livekit_api_key, secret: true, from: LIVEKIT_API_KEY }
+      - { name: cac_livekit_api_secret, secret: true, from: LIVEKIT_API_SECRET }
+      - { name: cac_recordings_mux_key, secret: true, from: RECORDINGS_MUX_KEY }
+      - { name: cac_github_app_slug, secret: true, from: GITHUB_APP_SLUG }
+      - { name: cac_github_webhook_secret, secret: true, from: GITHUB_WEBHOOK_SECRET }
+      - { name: cac_github_app_id, secret: true, from: GITHUB_APP_ID }
+      - { name: cac_github_app_private_key, secret: true, from: GITHUB_APP_PRIVATE_KEY }
+      - { name: cac_vapid_public_key, secret: true, from: VAPID_PUBLIC_KEY }
+      - { name: cac_vapid_private_key, secret: true, from: VAPID_PRIVATE_KEY }
+      - { name: cac_valkey_addr, secret: true, from: VALKEY_ADDR }
+      - { name: cac_valkey_password, secret: true, from: VALKEY_PASSWORD }
+      - { name: cac_recordings_mux_access_key_id, secret: true, from: RECORDINGS_MUX_ACCESS_KEY_ID }
+      - { name: cac_recordings_mux_secret_access_key, secret: true, from: RECORDINGS_MUX_SECRET_ACCESS_KEY }
+
+  - id: cac-secrets-verify
+    file: playbooks/cac-secrets-verify.yml
+    name: Verificar los secretos de cac
+    description: Los cuatro Secrets de cac están y cac-secret trae todas sus claves. No enseña valores.
+    hosts: k8s_control_plane
+    risk: read
+    become: true
+    become_password_from: OPS_PASSWORD
+    vars:
+      - { name: cac_namespace, default: cac }
+
   - id: k8s-teardown
     file: playbooks/k8s-teardown.yml
     name: Desmontar Kubernetes

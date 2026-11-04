@@ -1,0 +1,112 @@
+---
+# Los secretos de cac en el clúster donde corre, desde 1Password: cada valor
+# llega como variable de este playbook (una referencia op:// en la config del
+# servidor en cac, resuelta en la máquina de quien lo corre, con su huella).
+# Ni GitHub ni el runner ven ninguno: el despliegue desde el runner sólo aplica
+# manifiestos y reinicia (backend/k8s/deploy.sh), y comprueba que estén.
+#
+# Para cambiar un secreto: se cambia en 1Password (ítem «cac prod») y se vuelve
+# a pedir este playbook. Si cambió algo, cac-service se reinicia para leerlo.
+- name: Namespace de cac
+  ansible.builtin.shell:
+    cmd: kubectl get namespace {{ cac_namespace }}
+  changed_when: false
+  check_mode: false
+
+# Por stdin y del lado del servidor: ni en la línea de comandos ni en la
+# anotación last-applied. `to_json` deja cada valor como una cadena JSON, que
+# también es YAML válido: comillas, dos puntos o `\n` no rompen nada.
+- name: Secretos de cac
+  ansible.builtin.shell:
+    cmd: kubectl apply --server-side --force-conflicts -n {{ cac_namespace }} -f -
+    stdin: |
+      apiVersion: v1
+      kind: Secret
+      metadata: {name: cac-secret}
+      type: Opaque
+      stringData:
+        DATABASE_URL: {{ cac_database_url | to_json }}
+        JWT_SECRET_ACCESS: {{ cac_jwt_secret_access | to_json }}
+        JWT_SECRET_REFRESH: {{ cac_jwt_secret_refresh | to_json }}
+        IMAGE_SERVICE_URL: {{ cac_image_service_url | to_json }}
+        IMAGE_SERVICE_CERT_CN: {{ cac_image_service_cert_cn | to_json }}
+        IMAGE_SERVICE_API_KEY: {{ cac_image_service_api_key | to_json }}
+        REPORTS_MEDIA_BUCKET: {{ cac_reports_media_bucket | to_json }}
+        REPORTS_MEDIA_REGION: {{ cac_reports_media_region | to_json }}
+        REPORTS_MEDIA_ACCESS_KEY_ID: {{ cac_reports_media_access_key_id | to_json }}
+        REPORTS_MEDIA_SECRET_ACCESS_KEY: {{ cac_reports_media_secret_access_key | to_json }}
+        BACKUPS_BUCKET: {{ cac_backups_bucket | to_json }}
+        BACKUPS_REGION: {{ cac_backups_region | to_json }}
+        BACKUPS_PREFIX: {{ cac_backups_prefix | to_json }}
+        BACKUPS_ACCESS_KEY_ID: {{ cac_backups_access_key_id | to_json }}
+        BACKUPS_SECRET_ACCESS_KEY: {{ cac_backups_secret_access_key | to_json }}
+        EMAIL_REGION: {{ cac_email_region | to_json }}
+        EMAIL_FROM: {{ cac_email_from | to_json }}
+        EMAIL_CONFIGURATION_SET: {{ cac_email_configuration_set | to_json }}
+        EMAIL_ACCESS_KEY_ID: {{ cac_email_access_key_id | to_json }}
+        EMAIL_SECRET_ACCESS_KEY: {{ cac_email_secret_access_key | to_json }}
+        INGEST_KEY_SECRET: {{ cac_ingest_key_secret | to_json }}
+        REPORTS_KEK: {{ cac_reports_kek | to_json }}
+        REPORT_TOKEN_SECRET: {{ cac_report_token_secret | to_json }}
+        LIVEKIT_URL: {{ cac_livekit_url | to_json }}
+        LIVEKIT_API_KEY: {{ cac_livekit_api_key | to_json }}
+        LIVEKIT_API_SECRET: {{ cac_livekit_api_secret | to_json }}
+        RECORDINGS_MUX_KEY: {{ cac_recordings_mux_key | to_json }}
+        GITHUB_APP_SLUG: {{ cac_github_app_slug | to_json }}
+        GITHUB_WEBHOOK_SECRET: {{ cac_github_webhook_secret | to_json }}
+        GITHUB_APP_ID: {{ cac_github_app_id | to_json }}
+        GITHUB_APP_PRIVATE_KEY: {{ cac_github_app_private_key | to_json }}
+        VAPID_PUBLIC_KEY: {{ cac_vapid_public_key | to_json }}
+        VAPID_PRIVATE_KEY: {{ cac_vapid_private_key | to_json }}
+      ---
+      # El bus de eventos compartido entre réplicas: el Valkey de `data`.
+      apiVersion: v1
+      kind: Secret
+      metadata: {name: cac-valkey}
+      type: Opaque
+      stringData:
+        VALKEY_ADDR: {{ cac_valkey_addr | to_json }}
+        VALKEY_PASSWORD: {{ cac_valkey_password | to_json }}
+      ---
+      # El que lee el propio LiveKit, en su formato «clave: secreto».
+      apiVersion: v1
+      kind: Secret
+      metadata: {name: livekit-secret}
+      type: Opaque
+      stringData:
+        LIVEKIT_KEYS: {{ (cac_livekit_api_key ~ ': ' ~ cac_livekit_api_secret) | to_json }}
+      ---
+      # El del montador: sus llaves de AWS son de otro usuario de IAM, que lee
+      # las pistas y sube el montaje pero no borra nada.
+      apiVersion: v1
+      kind: Secret
+      metadata: {name: recordings-mux-secret}
+      type: Opaque
+      stringData:
+        CAC_INTERNAL_URL: {{ ('http://cac-service.' ~ cac_namespace ~ '.svc.cluster.local:8081') | to_json }}
+        RECORDINGS_MUX_KEY: {{ cac_recordings_mux_key | to_json }}
+        RECORDINGS_BUCKET: {{ cac_reports_media_bucket | to_json }}
+        AWS_DEFAULT_REGION: {{ cac_reports_media_region | to_json }}
+        AWS_ACCESS_KEY_ID: {{ cac_recordings_mux_access_key_id | to_json }}
+        AWS_SECRET_ACCESS_KEY: {{ cac_recordings_mux_secret_access_key | to_json }}
+    stdin_add_newline: false
+  register: cac_secrets
+  changed_when: "'serverside-applied' in cac_secrets.stdout and 'unchanged' not in cac_secrets.stdout"
+  no_log: true
+  when: not ansible_check_mode
+
+# Las variables de un Secret se leen al arrancar el pod: sin reiniciar, un
+# secreto nuevo no llega hasta el próximo despliegue.
+- name: ¿Ya corre cac-service?
+  ansible.builtin.command: kubectl -n {{ cac_namespace }} get deployment cac-service
+  register: cac_deploy
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: cac-service lee los secretos nuevos
+  ansible.builtin.command: kubectl -n {{ cac_namespace }} rollout restart deployment/cac-service
+  when:
+    - not ansible_check_mode
+    - cac_secrets is changed
+    - cac_deploy.rc == 0

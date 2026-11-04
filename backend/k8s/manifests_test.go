@@ -241,6 +241,13 @@ func TestDeployedManifestsDoNotPinTheirNamespace(t *testing.T) {
 			t.Errorf("deploy.sh no aplica %s", f)
 		}
 	}
+	// deploy.sh no maneja secretos (los pone el playbook cac-secrets): si
+	// volviera a crearlos, tendría que leerlos de algún sitio del runner.
+	for _, bad := range []string{"kind: \"Secret\"", "create secret", "op run", "$ENV"} {
+		if strings.Contains(string(script), bad) {
+			t.Errorf("deploy.sh vuelve a tocar secretos (%q)", bad)
+		}
+	}
 	// Lo de clúster no lo puede aplicar el runner: si deploy.sh lo intentara,
 	// cada despliegue fallaría con «forbidden».
 	if strings.Contains(string(script), "0-rbac-cluster.yaml\n") || strings.Contains(string(script), "0-rbac-cluster.yaml \\") {
@@ -268,6 +275,13 @@ func TestNoGstdJobRunsFromAPullRequest(t *testing.T) {
 			cond, _ := job["if"].(string)
 			if !strings.Contains(cond, "refs/heads/main") || !strings.Contains(cond, "github.event_name == 'push'") || strings.Contains(cond, "pull_request") {
 				t.Errorf("%s: el job %s de gstd no se limita a push/dispatch en main: %q", wf, name, cond)
+			}
+			// Ningún secreto de cac pasa por GitHub: los pone el playbook
+			// cac-secrets desde 1Password. Un `secrets.` en un job de gstd
+			// es un secreto que vuelve a vivir en el repo.
+			raw, _ := yaml.Marshal(job)
+			if strings.Contains(string(raw), "secrets.") {
+				t.Errorf("%s: el job %s de gstd lee secretos de GitHub", wf, name)
 			}
 			for _, ev := range []string{"pull_request", "pull_request_target"} {
 				if _, ok := on[ev]; ok {

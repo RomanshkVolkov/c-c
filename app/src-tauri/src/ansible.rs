@@ -2064,6 +2064,57 @@ playbooks:
         assert!(verify.contains("can-i --list --as=system:serviceaccount:arc-runners:arc-runner"), "el verify no mira los permisos de los pods");
     }
 
+    // Los secretos de cac no pasan por GitHub: los pone el playbook
+    // cac-secrets desde 1Password (la cuenta Familia no permite service
+    // accounts, y así no hay token de larga vida en el repo). Roturas que
+    // atrapa: una clave de cac-secret que el playbook no escribe; un secreto
+    // que no sale de 1Password (sin `from`); los valores fuera de stdin o sin
+    // no_log; un valor sin `to_json` (unas comillas o un `\n` rompen el YAML);
+    // reiniciar cac-service aunque nada cambiara, o no reiniciarlo nunca.
+    #[test]
+    fn cac_secrets_come_from_1password_and_never_from_github() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let m = parse_manifest(&std::fs::read_to_string(root.join(MANIFEST_FILE)).unwrap()).unwrap();
+        let pb = m.playbooks.iter().find(|p| p.id == "cac-secrets").expect("sin playbook cac-secrets");
+        assert_eq!((pb.risk.as_deref(), pb.verify.as_deref()), (Some(RISK_CHANGE), Some("cac-secrets-verify")));
+
+        // Las claves que lee cac-service: las mismas que deploy.sh exige.
+        let keys = [
+            "DATABASE_URL", "JWT_SECRET_ACCESS", "JWT_SECRET_REFRESH", "IMAGE_SERVICE_URL", "IMAGE_SERVICE_CERT_CN", "IMAGE_SERVICE_API_KEY",
+            "REPORTS_MEDIA_BUCKET", "REPORTS_MEDIA_REGION", "REPORTS_MEDIA_ACCESS_KEY_ID", "REPORTS_MEDIA_SECRET_ACCESS_KEY",
+            "BACKUPS_BUCKET", "BACKUPS_REGION", "BACKUPS_PREFIX", "BACKUPS_ACCESS_KEY_ID", "BACKUPS_SECRET_ACCESS_KEY",
+            "EMAIL_REGION", "EMAIL_FROM", "EMAIL_CONFIGURATION_SET", "EMAIL_ACCESS_KEY_ID", "EMAIL_SECRET_ACCESS_KEY",
+            "INGEST_KEY_SECRET", "REPORTS_KEK", "REPORT_TOKEN_SECRET", "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET",
+            "RECORDINGS_MUX_KEY", "GITHUB_APP_SLUG", "GITHUB_WEBHOOK_SECRET", "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY",
+            "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY",
+        ];
+        for k in keys.iter().chain(["VALKEY_ADDR", "VALKEY_PASSWORD", "RECORDINGS_MUX_ACCESS_KEY_ID", "RECORDINGS_MUX_SECRET_ACCESS_KEY"].iter()) {
+            let var = format!("cac_{}", k.to_lowercase());
+            assert!(
+                pb.vars.iter().any(|v| v.name == var && v.secret && v.from.as_deref() == Some(*k)),
+                "cac-secrets no saca {var} de 1Password ({k})"
+            );
+        }
+
+        let tasks = ansible_tasks(&std::fs::read_to_string(root.join("roles/cac_secrets/tasks/main.yml")).unwrap());
+        let apply = tasks
+            .iter()
+            .find(|t| t.get("ansible.builtin.shell").and_then(|s| s.get("stdin")).is_some())
+            .expect("los secretos no entran por stdin");
+        assert_eq!(apply["no_log"].as_bool(), Some(true), "los secretos salen en el log");
+        let stdin = apply["ansible.builtin.shell"]["stdin"].as_str().unwrap();
+        for k in keys {
+            let line = format!("\n  {k}: {{{{ cac_{} | to_json }}}}", k.to_lowercase());
+            assert!(stdin.contains(&line), "cac-secret no escribe {k} (o sin to_json)");
+        }
+        let restart = tasks
+            .iter()
+            .find(|t| t.get("ansible.builtin.command").and_then(|c| c.as_str()).is_some_and(|c| c.contains("rollout restart")))
+            .expect("cac-service no se reinicia al cambiar un secreto");
+        let when = serde_yaml::to_string(&restart["when"]).unwrap();
+        assert!(when.contains("cac_secrets is changed"), "cac-service se reinicia aunque nada cambiara");
+    }
+
     // En gstd la salida por IPv6 cortaba las capas grandes de GHCR a medias
     // (incidente 4b2b4ad0). Se rechaza desde ufw, sólo donde se pide. Roturas
     // que atrapa: encenderlo para todos los servidores; `deny` en vez de
