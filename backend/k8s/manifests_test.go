@@ -248,6 +248,14 @@ func TestDeployedManifestsDoNotPinTheirNamespace(t *testing.T) {
 			t.Errorf("deploy.sh vuelve a tocar secretos (%q)", bad)
 		}
 	}
+	// Ni consultar nada de clúster: el runner sólo tiene el Role de su
+	// namespace, y `kubectl get namespace` le devolvió «forbidden» en el
+	// primer despliegue a gstd (4-nov-2026).
+	for _, bad := range []string{"get namespace", "get nodes", "get ns "} {
+		if strings.Contains(string(script), "kubectl "+bad) || strings.Contains(string(script), "kubectl -n \"$NS\" "+bad) {
+			t.Errorf("deploy.sh consulta algo de clúster (%q)", bad)
+		}
+	}
 	// Lo de clúster no lo puede aplicar el runner: si deploy.sh lo intentara,
 	// cada despliegue fallaría con «forbidden».
 	if strings.Contains(string(script), "0-rbac-cluster.yaml\n") || strings.Contains(string(script), "0-rbac-cluster.yaml \\") {
