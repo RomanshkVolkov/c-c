@@ -2088,7 +2088,8 @@ playbooks:
             "RECORDINGS_MUX_KEY", "GITHUB_APP_SLUG", "GITHUB_WEBHOOK_SECRET", "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY",
             "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY",
         ];
-        for k in keys.iter().chain(["VALKEY_ADDR", "VALKEY_PASSWORD", "RECORDINGS_MUX_ACCESS_KEY_ID", "RECORDINGS_MUX_SECRET_ACCESS_KEY"].iter()) {
+        let others = ["VALKEY_ADDR", "VALKEY_PASSWORD", "RECORDINGS_MUX_ACCESS_KEY_ID", "RECORDINGS_MUX_SECRET_ACCESS_KEY", "EGRESS_S3_ACCESS_KEY_ID", "EGRESS_S3_SECRET_ACCESS_KEY"];
+        for k in keys.iter().chain(others.iter()) {
             let var = format!("cac_{}", k.to_lowercase());
             assert!(
                 pb.vars.iter().any(|v| v.name == var && v.secret && v.from.as_deref() == Some(*k)),
@@ -2106,6 +2107,13 @@ playbooks:
         for k in keys {
             let line = format!("\n  {k}: {{{{ cac_{} | to_json }}}}", k.to_lowercase());
             assert!(stdin.contains(&line), "cac-secret no escribe {k} (o sin to_json)");
+        }
+        // Egress: su configuración entera, con las direcciones del namespace
+        // donde se despliega (en pixel-vps estaban fijas en `default`).
+        assert!(stdin.contains("name: livekit-egress-secret") && stdin.contains("EGRESS_CONFIG_BODY: {{ cac_egress_config | to_json | to_json }}"), "cac-secrets no escribe la configuración de Egress");
+        let cfg = std::fs::read_to_string(root.join("roles/cac_secrets/vars/main.yml")).unwrap();
+        for addr in ["ws://livekit.{{ cac_namespace }}.svc", "livekit-redis.{{ cac_namespace }}.svc"] {
+            assert!(cfg.contains(addr), "la configuración de Egress no usa el namespace de cac ({addr})");
         }
         let restart = tasks
             .iter()

@@ -89,6 +89,17 @@
         AWS_DEFAULT_REGION: {{ cac_reports_media_region | to_json }}
         AWS_ACCESS_KEY_ID: {{ cac_recordings_mux_access_key_id | to_json }}
         AWS_SECRET_ACCESS_KEY: {{ cac_recordings_mux_secret_access_key | to_json }}
+      ---
+      # La configuración entera de Egress (la graba LiveKit en S3). Va en un
+      # Secret porque lleva las llaves del SFU y las de S3 de su propio usuario
+      # de IAM (infra/terraform/reports-media, `egress_*`). Las direcciones son
+      # las del namespace donde se despliega: en pixel-vps eran de `default`.
+      apiVersion: v1
+      kind: Secret
+      metadata: {name: livekit-egress-secret}
+      type: Opaque
+      stringData:
+        EGRESS_CONFIG_BODY: {{ cac_egress_config | to_json | to_json }}
     stdin_add_newline: false
   register: cac_secrets
   changed_when: "'serverside-applied' in cac_secrets.stdout and 'unchanged' not in cac_secrets.stdout"
@@ -97,16 +108,19 @@
 
 # Las variables de un Secret se leen al arrancar el pod: sin reiniciar, un
 # secreto nuevo no llega hasta el próximo despliegue.
-- name: ¿Ya corre cac-service?
-  ansible.builtin.command: kubectl -n {{ cac_namespace }} get deployment cac-service
+- name: ¿Qué ya corre?
+  ansible.builtin.command: kubectl -n {{ cac_namespace }} get deployment {{ item }}
+  loop: [cac-service, livekit-egress]
   register: cac_deploy
   changed_when: false
   failed_when: false
   check_mode: false
 
-- name: cac-service lee los secretos nuevos
-  ansible.builtin.command: kubectl -n {{ cac_namespace }} rollout restart deployment/cac-service
+- name: Lo que ya corre lee los secretos nuevos
+  ansible.builtin.command: kubectl -n {{ cac_namespace }} rollout restart deployment/{{ item.item }}
+  loop: "{{ cac_deploy.results }}"
+  loop_control: {label: "{{ item.item }}"}
   when:
     - not ansible_check_mode
     - cac_secrets is changed
-    - cac_deploy.rc == 0
+    - item.rc == 0

@@ -19,7 +19,7 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 # No se consulta el namespace: es de clúster y el runner sólo
 # tiene el Role de $NS (gstd, 4-nov-2026: «forbidden»). Si $NS no existe, la
 # consulta de los Secrets ya falla.
-if ! kubectl -n "$NS" get secret cac-secret cac-valkey livekit-secret recordings-mux-secret -o name >/dev/null; then
+if ! kubectl -n "$NS" get secret cac-secret cac-valkey livekit-secret recordings-mux-secret livekit-egress-secret -o name >/dev/null; then
   echo "faltan los Secrets de cac en $NS: pide el playbook cac-secrets en cac (Servidores → Provisioning)" >&2
   exit 1
 fi

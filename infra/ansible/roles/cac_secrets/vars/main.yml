@@ -1,0 +1,22 @@
+---
+# La configuración de LiveKit Egress, la misma que tenía pixel-vps en
+# livekit-egress-secret (4-nov-2026) con las direcciones del namespace de cac.
+cac_egress_config:
+  api_key: "{{ cac_livekit_api_key }}"
+  api_secret: "{{ cac_livekit_api_secret }}"
+  ws_url: "ws://livekit.{{ cac_namespace }}.svc.cluster.local:7880"
+  redis:
+    address: "livekit-redis.{{ cac_namespace }}.svc.cluster.local:6379"
+  health_port: 7981
+  insecure: true
+  disallow_local_storage: true
+  storage:
+    s3:
+      access_key: "{{ cac_egress_s3_access_key_id }}"
+      secret: "{{ cac_egress_s3_secret_access_key }}"
+      region: "{{ cac_reports_media_region }}"
+      bucket: "{{ cac_reports_media_bucket }}"
+  cpu_cost:
+    room_composite_cpu_cost: 3
+    track_cpu_cost: 0.5
+    max_cpu_utilization: 0.8
