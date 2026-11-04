@@ -134,5 +134,10 @@ jobs:
             # Forzar el rollout: la etiqueta `:mux` no cambia, así que `apply`
             # por sí solo dejaría el pod con la imagen vieja.
             kubectl rollout restart deployment/recordings-mux
-            kubectl rollout status deployment/recordings-mux --timeout=120s
+            # El script sale con el código de su última orden: con el `rm` al
+            # final, un rollout que no terminaba salía en verde (4-nov-2026, la
+            # imagen nueva privada en GHCR y el pod en ImagePullBackOff).
+            rollout=0
+            kubectl rollout status deployment/recordings-mux --timeout=120s || rollout=$?
             rm -rf /tmp/mux-k8s
+            exit $rollout

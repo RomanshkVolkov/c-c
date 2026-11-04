@@ -244,5 +244,10 @@ jobs:
             # cac-secret is picked up (apply alone is a no-op when the tag is
             # unchanged → the pod would keep the old image).
             kubectl rollout restart deployment/cac-service
-            kubectl rollout status deployment/cac-service --timeout=120s
+            # El script sale con el código de su última orden: con el `rm` al
+            # final, un rollout que no terminaba salía en verde (4-nov-2026, la
+            # imagen nueva privada en GHCR y el pod en ImagePullBackOff).
+            rollout=0
+            kubectl rollout status deployment/cac-service --timeout=120s || rollout=$?
             rm -rf /tmp/cac-k8s
+            exit $rollout
