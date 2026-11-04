@@ -130,7 +130,7 @@ jobs:
               rm -rf /tmp/mux-k8s
               exit 0
             fi
-            kubectl apply -f /tmp/mux-k8s/mux.yaml
+            kubectl apply -n default -f /tmp/mux-k8s/mux.yaml
             # Forzar el rollout: la etiqueta `:mux` no cambia, así que `apply`
             # por sí solo dejaría el pod con la imagen vieja.
             kubectl rollout restart deployment/recordings-mux
@@ -141,3 +141,26 @@ jobs:
             kubectl rollout status deployment/recordings-mux --timeout=120s || rollout=$?
             rm -rf /tmp/mux-k8s
             exit $rollout
+
+  deploy-mux-gstd:
+    # gstd, desde su runner y con los secretos del Environment «cac prod» de
+    # 1Password (command-and-control-306). Convive con el despliegue de arriba
+    # hasta la mudanza; sólo corre cuando existe la variable OP_ENVIRONMENT_PROD.
+    # Nunca en un pull_request: el repo es público y este job corre dentro de gstd.
+    if: vars.OP_ENVIRONMENT_PROD != '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: gstd
+    needs: build-push
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gstd-kubectl
+        with: {namespace: cac}
+      # El secreto lo crea el despliegue del backend (backend/k8s/deploy.sh);
+      # sin él el montador se quedaría en CreateContainerConfigError.
+      - name: Apply and roll out
+        run: |
+          if ! kubectl -n cac get secret recordings-mux-secret >/dev/null 2>&1; then
+            echo "sin recordings-mux-secret en cac: no se despliega el montador"; exit 0
+          fi
+          kubectl apply --server-side --force-conflicts -n cac -f transcriber/k8s/mux.yaml
+          kubectl -n cac rollout restart deployment/recordings-mux
+          kubectl -n cac rollout status deployment/recordings-mux --timeout=180s

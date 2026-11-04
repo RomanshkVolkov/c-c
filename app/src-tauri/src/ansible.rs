@@ -2004,8 +2004,9 @@ playbooks:
     // permisos (cualquier permiso suyo lo tendría todo job de todo repo).
     // Roturas que atrapa: meter el runner en `k8s`; versiones distintas para
     // los dos charts; runners siempre encendidos; la llave fuera de stdin o
-    // sin no_log; un RoleBinding o ClusterRoleBinding para `arc-runner`; un
-    // verify que no mira el listener o los permisos.
+    // sin no_log; permisos de clúster para `arc-runner`, o fuera de los
+    // namespaces pedidos, o con `*`; un verify que no mira el listener o los
+    // permisos.
     #[test]
     fn the_runner_is_its_own_playbook_and_its_pods_have_no_permissions() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
@@ -2030,8 +2031,26 @@ playbooks:
             .find(|t| t.get("ansible.builtin.shell").and_then(|s| s.get("stdin")).and_then(|s| s.as_str()).is_some_and(|s| s.contains("github_app_private_key")))
             .expect("la llave de la App no entra por stdin");
         assert_eq!(secret["no_log"].as_bool(), Some(true), "la llave de la App sale en el log");
-        // Sobre las tareas parseadas, no el texto: un comentario que lo nombre no cuenta.
-        assert!(!tasks.iter().any(|t| serde_yaml::to_string(t).unwrap().contains("RoleBinding")), "el rol le da permisos a la cuenta de los runners");
+        // Sobre las tareas parseadas, no el texto: un comentario que lo nombre
+        // no cuenta. Permisos sí, pero sólo de namespace y sólo en los que se
+        // piden: nunca de clúster, nunca `*`.
+        let text = |t: &serde_yaml::Value| serde_yaml::to_string(t).unwrap();
+        assert!(!tasks.iter().any(|t| text(t).contains("kind: ClusterRole")), "el rol le da permisos de clúster a la cuenta de los runners");
+        let grants: Vec<&serde_yaml::Value> = tasks.iter().filter(|t| text(t).contains("RoleBinding")).collect();
+        assert_eq!(grants.len(), 1, "los permisos del runner salen de más de un sitio");
+        assert!(
+            grants[0]["loop"].as_str().is_some_and(|l| l.contains("runner_deploy_namespaces")),
+            "los permisos del runner no se limitan a runner_deploy_namespaces"
+        );
+        let stdin = grants[0]["ansible.builtin.shell"]["stdin"].as_str().unwrap();
+        assert!(!stdin.contains('*'), "un Role del runner con `*`");
+        let docs: Vec<serde_yaml::Value> = serde_yaml::Deserializer::from_str(&stdin.replace("{{ item }}", "pedido"))
+            .map(|d| serde_yaml::Value::deserialize(d).unwrap())
+            .collect();
+        for kind in ["Role", "RoleBinding"] {
+            let d = docs.iter().find(|d| d["kind"] == kind).unwrap_or_else(|| panic!("sin {kind} para el runner"));
+            assert_eq!(d["metadata"]["namespace"].as_str(), Some("pedido"), "el {kind} del runner no es del namespace pedido");
+        }
 
         let values = std::fs::read_to_string(root.join("roles/runner/templates/runner-values.yaml.j2")).unwrap();
         let v: serde_yaml::Value = serde_yaml::from_str(&values.replace("{{ runner_max }}", "3")).unwrap();

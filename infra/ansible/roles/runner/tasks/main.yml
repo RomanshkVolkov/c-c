@@ -54,6 +54,52 @@
   register: runner_sa
   changed_when: "'serverside-applied' in runner_sa.stdout and 'unchanged' not in runner_sa.stdout"
 
+# Donde se despliega cada app desde el runner: su namespace, y un Role que le
+# deja al runner manejar sus recursos ahí y en ningún otro sitio. Es un Role
+# (de namespace), nunca un ClusterRole: lo que necesite de clúster (cac-hub) lo
+# aplica un admin aparte. Sin `*`: cada recurso que se despliega, por nombre.
+- name: Namespaces donde despliega el runner
+  ansible.builtin.shell:
+    cmd: kubectl apply --server-side --force-conflicts -f -
+    stdin: |
+      apiVersion: v1
+      kind: Namespace
+      metadata: {name: {{ item }}}
+      ---
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata: {name: ci-deploy, namespace: {{ item }}}
+      rules:
+        - apiGroups: [""]
+          resources: [secrets, services, configmaps, serviceaccounts]
+          verbs: [get, list, watch, create, update, patch, delete]
+        - apiGroups: [""]
+          resources: [pods, pods/log]
+          verbs: [get, list, watch]
+        - apiGroups: [apps]
+          resources: [deployments]
+          verbs: [get, list, watch, create, update, patch, delete]
+        - apiGroups: [apps]
+          resources: [replicasets]
+          verbs: [get, list, watch]
+        - apiGroups: [gateway.networking.k8s.io]
+          resources: [httproutes, tcproutes]
+          verbs: [get, list, watch, create, update, patch, delete]
+        - apiGroups: [cilium.io]
+          resources: [ciliumnetworkpolicies]
+          verbs: [get, list, watch, create, update, patch, delete]
+      ---
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata: {name: ci-deploy, namespace: {{ item }}}
+      roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: ci-deploy}
+      subjects:
+        - {kind: ServiceAccount, name: arc-runner, namespace: arc-runners}
+    stdin_add_newline: false
+  loop: "{{ runner_deploy_namespaces | default([]) }}"
+  register: deploy_ns
+  changed_when: "'serverside-applied' in deploy_ns.stdout and 'unchanged' not in deploy_ns.stdout"
+
 # La llave es un PEM de varias líneas: va en `data:` ya en base64 para que no
 # rompa el YAML (como 1-secret-github.sh de Dwit), por stdin y del lado del
 # servidor, sin pasar por la línea de comandos ni por last-applied.

@@ -76,6 +76,24 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            kubectl apply -f /tmp/cac-web/k8s.yaml
+            kubectl apply -n default -f /tmp/cac-web/k8s.yaml
             kubectl -n default rollout restart deployment/cac-web
             kubectl -n default rollout status deployment/cac-web --timeout=180s
+
+  deploy-gstd:
+    # gstd, desde su runner y con los secretos del Environment «cac prod» de
+    # 1Password (command-and-control-306). Convive con el despliegue de arriba
+    # hasta la mudanza; sólo corre cuando existe la variable OP_ENVIRONMENT_PROD.
+    # Nunca en un pull_request: el repo es público y este job corre dentro de gstd.
+    if: vars.OP_ENVIRONMENT_PROD != '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: gstd
+    needs: build-push
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gstd-kubectl
+        with: {namespace: cac}
+      - name: Apply and roll out
+        run: |
+          kubectl apply --server-side --force-conflicts -n cac -f app/web/k8s.yaml
+          kubectl -n cac rollout restart deployment/cac-web
+          kubectl -n cac rollout status deployment/cac-web --timeout=180s

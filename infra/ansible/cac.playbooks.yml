@@ -322,6 +322,12 @@ playbooks:
       - { name: runner_github_config_url, description: "La org (o el repo) de GitHub donde se registra el scale set.", required: true }
       - { name: runner_scale_set_name, description: "El nombre del scale set: lo que va en `runs-on`.", required: true }
       - { name: runner_max, description: Cuántos jobs a la vez como mucho., default: 3 }
+      - name: runner_deploy_namespaces
+        description: >-
+          Los namespaces donde el runner puede desplegar (se crean con un Role
+          `ci-deploy` para la cuenta de los pods runner, sólo ahí).
+        type: list
+        default: []
       - name: runner_github_app_id
         secret: true
         from: ARC_GITHUB_APP_ID

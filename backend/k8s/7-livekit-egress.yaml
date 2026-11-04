@@ -25,7 +25,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: livekit-egress
-  namespace: default
 spec:
   replicas: 1
   # Recreate y no RollingUpdate: una grabación en vuelo muere con el pod de

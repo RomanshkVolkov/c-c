@@ -1,0 +1,44 @@
+# Los permisos de lectura de cac-hub sobre todo el clúster (ver 0-rbac.yaml).
+# Aparte porque son de clúster: el runner que despliega cac en gstd sólo tiene
+# permisos dentro del namespace `cac` y no puede crearlos. Los aplica un admin,
+# una vez por clúster (`kubectl apply -f 0-rbac-cluster.yaml`); en pixel-vps los
+# aplica su despliegue por SSH, como siempre.
+#
+# Dos sujetos porque cac vive en `default` en pixel-vps y en `cac` en gstd. El
+# que no existe en un clúster no da nada.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cac-hub-read
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces", "pods", "services", "events"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways", "httproutes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates"]
+    verbs: ["get", "list"]
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["clusters", "backups"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cac-hub-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cac-hub-read
+subjects:
+  - kind: ServiceAccount
+    name: cac-hub
+    namespace: default
+  - kind: ServiceAccount
+    name: cac-hub
+    namespace: cac

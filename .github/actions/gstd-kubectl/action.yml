@@ -1,0 +1,25 @@
+# kubectl dentro del runner `gstd`, con la cuenta de servicio montada en el pod
+# (arc-runner, sin permisos salvo el Role `ci-deploy` del namespace pedido; lo
+# da el playbook `runner` de infra/ansible). Sin kubeconfig guardado en GitHub
+# ni túnel SSH. Comprueba que de verdad puede desplegar ahí antes de seguir.
+name: kubectl en gstd
+description: Deja KUBECONFIG apuntando al clúster del runner con la cuenta del pod.
+inputs:
+  namespace:
+    description: Namespace donde se va a desplegar.
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        NS: ${{ inputs.namespace }}
+      run: |
+        SA=/var/run/secrets/kubernetes.io/serviceaccount
+        export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
+        kubectl config set-cluster gstd --server=https://kubernetes.default.svc --certificate-authority="$SA/ca.crt" >/dev/null
+        kubectl config set-credentials arc-runner --token="$(cat "$SA/token")" >/dev/null
+        kubectl config set-context ci --cluster=gstd --user=arc-runner --namespace="$NS" >/dev/null
+        kubectl config use-context ci >/dev/null
+        echo "KUBECONFIG=$KUBECONFIG" >> "$GITHUB_ENV"
+        test "$(kubectl auth can-i create deployments -n "$NS")" = yes

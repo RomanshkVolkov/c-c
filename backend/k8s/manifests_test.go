@@ -203,3 +203,80 @@ func TestABackendDeployKeepsServing(t *testing.T) {
 		t.Fatalf("sin sonda de listo en /health: %v", probe)
 	}
 }
+
+// Los mismos manifiestos se despliegan en dos clústeres a la vez hasta la
+// mudanza: en pixel-vps a `default` (por SSH) y en gstd a `cac` (deploy.sh,
+// con `-n cac`). Eso sólo funciona si ningún manifiesto fija su namespace: uno
+// que dijera `namespace: default` aparecería en el `default` de gstd, junto al
+// Gateway y sus certificados, con permisos que el runner no tiene. El
+// `namespace` de un parentRefs sí va: es donde vive el Gateway, no el recurso.
+//
+// Roturas que atrapa: volver a poner `metadata.namespace` en uno de los
+// ficheros que se aplican; que deploy.sh deje de aplicar alguno.
+func TestDeployedManifestsDoNotPinTheirNamespace(t *testing.T) {
+	deployed := []string{"0-rbac.yaml", "2-deployment.yaml", "3-service.yaml", "4-http-route.yaml",
+		"5-livekit.yaml", "6-livekit-route.yaml", "7-livekit-egress.yaml", "../../app/web/k8s.yaml",
+		"../../transcriber/k8s/mux.yaml"}
+	for _, f := range deployed {
+		ds := docs(t, f)
+		if len(ds) == 0 {
+			t.Fatalf("%s: sin documentos", f)
+		}
+		for _, d := range ds {
+			md, ok := d["metadata"].(doc)
+			if !ok {
+				t.Fatalf("%s: %v sin metadata legible", f, d["kind"])
+			}
+			if ns, ok := md["namespace"]; ok {
+				t.Errorf("%s: %v/%v fija namespace %v", f, d["kind"], md["name"], ns)
+			}
+		}
+	}
+	script, err := os.ReadFile("deploy.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range deployed[:7] {
+		if !strings.Contains(string(script), f) {
+			t.Errorf("deploy.sh no aplica %s", f)
+		}
+	}
+	// Lo de clúster no lo puede aplicar el runner: si deploy.sh lo intentara,
+	// cada despliegue fallaría con «forbidden».
+	if strings.Contains(string(script), "0-rbac-cluster.yaml\n") || strings.Contains(string(script), "0-rbac-cluster.yaml \\") {
+		t.Error("deploy.sh aplica 0-rbac-cluster.yaml, que es de clúster")
+	}
+}
+
+// El repo es público: un job que corre en `gstd` desde un pull_request
+// correría el código de un fork dentro del servidor. Roturas que atrapa: un
+// workflow que dispare con pull_request o pull_request_target y use `gstd`;
+// un job de `gstd` sin su `if` de push o workflow_dispatch en main.
+func TestNoGstdJobRunsFromAPullRequest(t *testing.T) {
+	for _, wf := range []string{"backend", "web", "transcriber"} {
+		path := "../../.github/workflows/" + wf + ".yml"
+		d := docs(t, path)[0]
+		on, _ := d["on"].(doc)
+		jobs, _ := d["jobs"].(doc)
+		gstd := 0
+		for name, j := range jobs {
+			job, _ := j.(doc)
+			if job["runs-on"] != "gstd" {
+				continue
+			}
+			gstd++
+			cond, _ := job["if"].(string)
+			if !strings.Contains(cond, "refs/heads/main") || !strings.Contains(cond, "github.event_name == 'push'") || strings.Contains(cond, "pull_request") {
+				t.Errorf("%s: el job %s de gstd no se limita a push/dispatch en main: %q", wf, name, cond)
+			}
+			for _, ev := range []string{"pull_request", "pull_request_target"} {
+				if _, ok := on[ev]; ok {
+					t.Errorf("%s dispara con %s y tiene un job en gstd", wf, ev)
+				}
+			}
+		}
+		if gstd == 0 {
+			t.Errorf("%s no despliega en gstd", wf)
+		}
+	}
+}

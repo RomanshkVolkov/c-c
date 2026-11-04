@@ -112,7 +112,7 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "backend/k8s/0-rbac.yaml,backend/k8s/2-deployment.yaml,backend/k8s/3-service.yaml,backend/k8s/4-http-route.yaml,backend/k8s/5-livekit.yaml,backend/k8s/6-livekit-route.yaml"
+          source: "backend/k8s/0-rbac.yaml,backend/k8s/0-rbac-cluster.yaml,backend/k8s/2-deployment.yaml,backend/k8s/3-service.yaml,backend/k8s/4-http-route.yaml,backend/k8s/5-livekit.yaml,backend/k8s/6-livekit-route.yaml"
           target: "/tmp/cac-k8s"
           strip_components: 2
 
@@ -239,7 +239,7 @@ jobs:
                 --dry-run=client -o yaml | kubectl apply -f -
             fi
 
-            kubectl apply -f /tmp/cac-k8s/
+            kubectl apply -n default -f /tmp/cac-k8s/
             # Force a fresh rollout so the :latest image is re-pulled and the new
             # cac-secret is picked up (apply alone is a no-op when the tag is
             # unchanged → the pod would keep the old image).
@@ -251,3 +251,22 @@ jobs:
             kubectl rollout status deployment/cac-service --timeout=120s || rollout=$?
             rm -rf /tmp/cac-k8s
             exit $rollout
+
+  deploy-gstd:
+    # gstd, desde su runner y con los secretos del Environment «cac prod» de
+    # 1Password (command-and-control-306). Convive con el despliegue de arriba
+    # hasta la mudanza; sólo corre cuando existe la variable OP_ENVIRONMENT_PROD.
+    # Nunca en un pull_request: el repo es público y este job corre dentro de gstd.
+    if: vars.OP_ENVIRONMENT_PROD != '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: gstd
+    needs: build-push
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gstd-kubectl
+        with: {namespace: cac}
+      - name: Secretos desde 1Password y despliegue
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          OP_ENVIRONMENT: ${{ vars.OP_ENVIRONMENT_PROD }}
+          NS: cac
+        run: op run --environment "$OP_ENVIRONMENT" -- backend/k8s/deploy.sh
