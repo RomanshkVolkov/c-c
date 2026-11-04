@@ -40,6 +40,11 @@ de cac» del espacio). Lo que pixel-vps enseñó, corregido en `infra/ansible`:
 - **D** (304) **aplicada el 4-nov**: Valkey 9.0.7 oficial por digest en
   `data` (`08d2cfb`), contraseña por config montado, AOF en un PVC de 2Gi,
   sin Sentinel. Persistencia probada borrando el pod.
+- **E** (305) **aplicada el 4-nov**: `c-c` pasa a la org `g-studio-labs`
+  (imágenes en `ghcr.io/g-studio-labs/c-c`, `bbb361a`); runner `gstd` de ARC
+  con la GitHub App de la org, definido en `g-studio-labs/actions-runner` e
+  instalado con el playbook `runner` (`b394677`). Smoke en verde. La salida
+  IPv6 de gstd cortaba las descargas de GHCR: `block_ipv6_egress` (`5e0a4c1`).
 - Una petición cuya verificación falló se puede **volver a verificar**
   (backend `9c0b2f3`, desplegado; botón en la app `42fb580`, sin release).
 - **C** (303, `ff815c9`): Postgres como playbook propio `cnpg` (operador
