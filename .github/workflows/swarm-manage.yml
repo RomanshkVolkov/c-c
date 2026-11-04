@@ -46,6 +46,6 @@ jobs:
           context: ./swarm-manage
           push: true
           tags: |
-            ghcr.io/romanshkvolkov/c-c/swarm-manage:${{ steps.version.outputs.tag }}
-            ghcr.io/romanshkvolkov/c-c/swarm-manage:latest
+            ghcr.io/g-studio-labs/c-c/swarm-manage:${{ steps.version.outputs.tag }}
+            ghcr.io/g-studio-labs/c-c/swarm-manage:latest
 

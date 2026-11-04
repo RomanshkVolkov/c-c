@@ -93,7 +93,9 @@ Releases are cut by publishing a `vX.Y.Z` GitHub release. The `app-release.yml` 
 3. Signs all bundles with `TAURI_SIGNING_PRIVATE_KEY` (requires `bundle.createUpdaterArtifacts: true` in `tauri.conf.json`).
 4. Uploads bundles + `.sig` files + `latest.json` to the release.
 
-The installed app polls `https://github.com/RomanshkVolkov/c-c/releases/latest/download/latest.json` every 30 min via the `UpdateChecker` component.
+The installed app polls `https://github.com/g-studio-labs/c-c/releases/latest/download/latest.json` every 30 min via the `UpdateChecker` component.
+
+Until the repo moved to the `g-studio-labs` org (4-nov-2026) it lived at `RomanshkVolkov/c-c`, and every app released before that still polls the old URL. GitHub redirects it to the new home **only while no repo named `c-c` exists again under `RomanshkVolkov`**: creating one there cuts every older install off from updates.
 
 ### Building the package locally
 

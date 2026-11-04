@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: ghcr.io/romanshkvolkov/c-c/web:latest
+          image: ghcr.io/g-studio-labs/c-c/web:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

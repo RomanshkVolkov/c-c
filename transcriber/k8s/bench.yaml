@@ -53,7 +53,7 @@ spec:
               mountPath: /audio
       containers:
         - name: bench
-          image: ghcr.io/romanshkvolkov/c-c/transcriber:bench
+          image: ghcr.io/g-studio-labs/c-c/transcriber:bench
           args: ["tools/bench_stt.py", "/audio/es_denso.wav", "--threads", "6"]
           command: ["python", "-u"]
           volumeMounts:

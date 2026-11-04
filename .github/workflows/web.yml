@@ -47,7 +47,7 @@ jobs:
           context: ./app
           file: ./app/web/Dockerfile
           push: true
-          tags: ghcr.io/romanshkvolkov/c-c/web:latest
+          tags: ghcr.io/g-studio-labs/c-c/web:latest
 
   deploy:
     runs-on: ubuntu-latest

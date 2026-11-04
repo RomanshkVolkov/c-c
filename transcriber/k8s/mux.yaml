@@ -24,7 +24,7 @@ spec:
     spec:
       containers:
         - name: mux
-          image: ghcr.io/romanshkvolkov/c-c/transcriber:mux
+          image: ghcr.io/g-studio-labs/c-c/transcriber:mux
           imagePullPolicy: Always
           # `nice`: esto es trabajo de después, y comparte nodo con el SFU, con
           # Egress y con la propia aplicación. Que una reunión tarde treinta

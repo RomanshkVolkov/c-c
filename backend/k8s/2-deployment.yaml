@@ -35,7 +35,7 @@ spec:
       terminationGracePeriodSeconds: 50
       containers:
         - name: cac-service-api
-          image: ghcr.io/romanshkvolkov/c-c/backend:latest
+          image: ghcr.io/g-studio-labs/c-c/backend:latest
           imagePullPolicy: Always
           # Listo cuando contesta: `/health` no toca la base, y el servidor
           # sólo escucha después de migrar. Sin esto, el proxy mandaba tráfico

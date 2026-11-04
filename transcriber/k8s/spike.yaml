@@ -27,7 +27,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: spike
-          image: ghcr.io/romanshkvolkov/c-c/transcriber:spike
+          image: ghcr.io/g-studio-labs/c-c/transcriber:spike
           # `--speak` levanta el suplente que publica el tono. Sin él no hay
           # audio que medir: en un pod no hay nadie hablando. Ver spike_speaker.
           args: ["--room", "voice:REEMPLAZAR", "--seconds", "120", "--speak"]

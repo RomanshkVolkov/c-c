@@ -10,8 +10,8 @@
  * `connect-src` (`web/security-headers.conf`).
  */
 
-export const RELEASES_URL = "https://github.com/RomanshkVolkov/c-c/releases";
-const LATEST_API = "https://api.github.com/repos/RomanshkVolkov/c-c/releases/latest";
+export const RELEASES_URL = "https://github.com/g-studio-labs/c-c/releases";
+const LATEST_API = "https://api.github.com/repos/g-studio-labs/c-c/releases/latest";
 
 export type DownloadOS = "windows" | "mac" | "linux";
 

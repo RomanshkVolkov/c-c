@@ -63,7 +63,7 @@ Designed to run as a container on each swarm manager node:
 ```yaml
 services:
   swarm-manage:
-    image: ghcr.io/romanshkvolkov/c-c/swarm-manage:latest
+    image: ghcr.io/g-studio-labs/c-c/swarm-manage:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
@@ -84,4 +84,4 @@ air                                  # http://localhost:9090/health
 
 ## CI
 
-`.github/workflows/swarm-manage.yml` builds and pushes `ghcr.io/romanshkvolkov/c-c/swarm-manage:latest` on changes to `swarm-manage/**`. The agent is pulled by the deploy-agent flow above — no separate manifest application.
+`.github/workflows/swarm-manage.yml` builds and pushes `ghcr.io/g-studio-labs/c-c/swarm-manage:latest` on changes to `swarm-manage/**`. The agent is pulled by the deploy-agent flow above — no separate manifest application.

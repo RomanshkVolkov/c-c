@@ -107,7 +107,7 @@ The migration is auto-run on boot via GORM `AutoMigrate` in `repository/db.go`.
 
 `.github/workflows/backend.yml` triggers on push to `backend/**` or manual `workflow_dispatch`:
 
-1. `docker build` → push to `ghcr.io/romanshkvolkov/c-c/backend:latest`
+1. `docker build` → push to `ghcr.io/g-studio-labs/c-c/backend:latest`
 2. SSH to k8s host → `kubectl create secret` (from GitHub repo secrets) → `kubectl apply -f k8s/` → `rollout status`
 
 > **Operational note:** when you rotate the DB password, **also update the `DATABASE_URL` GitHub repo secret** before the next deploy. Otherwise the pod crash-loops on a dead credential and the API returns `503` upstream errors.

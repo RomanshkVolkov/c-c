@@ -67,7 +67,7 @@ jobs:
           # `spike` y no `latest`: esto es la imagen de la fase 0, sin modelo.
           # Cuando exista el worker entero llevará su propia etiqueta y ésta se
           # podrá retirar.
-          tags: ghcr.io/romanshkvolkov/c-c/transcriber:spike
+          tags: ghcr.io/g-studio-labs/c-c/transcriber:spike
 
       # La misma imagen con `faster-whisper` dentro, para medir el `rtf` en el
       # hardware real — que es el único sitio donde ese número significa algo.
@@ -79,7 +79,7 @@ jobs:
           push: true
           build-args: |
             EXTRAS=[stt]
-          tags: ghcr.io/romanshkvolkov/c-c/transcriber:bench
+          tags: ghcr.io/g-studio-labs/c-c/transcriber:bench
 
       # Y la del montador: `boto3` para hablar con S3 y `ffmpeg` dentro. Los
       # 200 MB de ffmpeg no los quiere ninguna de las otras dos.
@@ -91,7 +91,7 @@ jobs:
           build-args: |
             EXTRAS=[mux]
             WITH_FFMPEG=1
-          tags: ghcr.io/romanshkvolkov/c-c/transcriber:mux
+          tags: ghcr.io/g-studio-labs/c-c/transcriber:mux
 
   deploy-mux:
     runs-on: ubuntu-latest
