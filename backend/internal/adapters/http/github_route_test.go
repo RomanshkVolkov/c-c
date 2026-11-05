@@ -456,3 +456,68 @@ func TestAnExpiredLinkStateBindsNothing(t *testing.T) {
 		t.Error("un state de hace once minutos ató la instalación")
 	}
 }
+
+// Una instalación que llegó sin org (GitHub no devolvió nuestro `state`, como
+// la de CrossfireTheChilamGroup el 5-nov-2026) sólo la ve y la ata un
+// superadmin en persona, admin de la org que la adopta. Un admin cualquiera
+// no la ve ni la ata (el token, en `TestOnlyASuperadminInPersonSeesOrphans`
+// del handler), un id que GitHub no
+// anunció no se crea, y la que ya es de otra org es un 409.
+func TestAnUnboundInstallationIsOnlyAdoptedByASuperadminInPerson(t *testing.T) {
+	f, cleanup := githubSetup(t)
+	defer cleanup()
+	f.hook(t, "installation", "d-huerfana", `{"action":"created","installation":{"id":9,"account":{"login":"cliente"}},
+		"repositories":[{"id":900,"full_name":"cliente/crossfire"}]}`)
+	call := func(method, path string, superadmin bool) *httptest.ResponseRecorder {
+		pair, err := repository.GenerateTokens("u-1", "ana", superadmin,
+			[]domain.OrgMembershipClaim{{OrgID: "org-2", Role: domain.OrgRoleAdmin}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(method, path, nil)
+		req.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+		rec := httptest.NewRecorder()
+		f.r.ServeHTTP(rec, req)
+		return rec
+	}
+	const status = "/api/v1/organizations/org-2/github/"
+	const adopt = "/api/v1/organizations/org-2/github/installations/9/adopt"
+	org := func(id int64) string {
+		var inst domain.GitHubInstallation
+		f.db.First(&inst, "installation_id = ?", id)
+		return inst.OrgID
+	}
+
+	if rec := call(http.MethodGet, status, false); strings.Contains(rec.Body.String(), "cliente/crossfire") {
+		t.Errorf("un admin que no es superadmin ve la instalación huérfana: %s", rec.Body.String())
+	}
+	if rec := call(http.MethodGet, status, true); !strings.Contains(rec.Body.String(), `"unbound":[{"installationId":9,"accountLogin":"cliente","repos":["cliente/crossfire"]}]`) {
+		t.Errorf("el superadmin no la ve: %s", rec.Body.String())
+	}
+	if rec := call(http.MethodPost, adopt, false); rec.Code != http.StatusForbidden {
+		t.Errorf("un admin adoptando → %d, se esperaba 403", rec.Code)
+	}
+	if rec := call(http.MethodPost, "/api/v1/organizations/org-2/github/installations/77/adopt", true); rec.Code != http.StatusNotFound {
+		t.Errorf("adoptar un id que GitHub no anunció → %d, se esperaba 404", rec.Code)
+	}
+	if org(9) != "" || f.svc.Adopt("org-2", 77) == nil {
+		t.Fatalf("algo quedó atado sin adoptar: %q", org(9))
+	}
+	if rec := call(http.MethodPost, adopt, true); rec.Code != http.StatusNoContent {
+		t.Fatalf("el superadmin adoptando → %d %s", rec.Code, rec.Body.String())
+	}
+	var repo domain.GitHubRepo
+	f.db.First(&repo, "repo_id = 900")
+	if org(9) != "org-2" || repo.OrgID != "org-2" {
+		t.Errorf("la instalación quedó en %q y su repo en %q, se esperaba org-2", org(9), repo.OrgID)
+	}
+	if rec := call(http.MethodGet, status, true); strings.Contains(rec.Body.String(), "unbound") {
+		t.Errorf("ya atada, sigue saliendo como huérfana: %s", rec.Body.String())
+	}
+	if rec := call(http.MethodPost, "/api/v1/organizations/org-2/github/installations/5/adopt", true); rec.Code != http.StatusConflict {
+		t.Errorf("adoptar la de otra org → %d, se esperaba 409", rec.Code)
+	}
+	if org(5) != "org-1" {
+		t.Errorf("la instalación 5 cambió de org: %q", org(5))
+	}
+}

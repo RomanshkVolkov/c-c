@@ -63,6 +63,7 @@ func InitGitHubRoutesWith(r *chi.Mux, svc *service.GitHubService) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", h.Status)
 		r.Post("/link", h.Link)
+		r.Post("/installations/{installationId}/adopt", h.AdoptInstallation)
 		r.Patch("/repos/{repoId}", h.UpdateRepo)
 		r.Post("/repos/{repoId}/docs/sync", h.SyncRepoDocs)
 		r.Get("/workflows", h.RepoWorkflows)

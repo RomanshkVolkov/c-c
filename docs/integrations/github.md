@@ -57,6 +57,14 @@ la Setup URL y cac ata la instalación a la org.
   10 minutos. Sin él no se ata nada.
 - **Una instalación se ata una sola vez.** Si ya es de otra org de cac, la
   página lo dice y no se la lleva.
+- **Si la vuelta no trae el `state`**, la instalación llega igual por el
+  webhook, pero sin org. Pasa cuando la aprueba un owner de la org de GitHub
+  desde allí (o el state caducó): el 5-nov-2026, la de
+  `CrossfireTheChilamGroup`. Un superadmin, con su sesión (no con un token),
+  la ve en la pestaña GitHub de la org, «Instaladas en GitHub, sin
+  organización en cac», y la ata con «Atar a esta organización»
+  (`POST …/github/installations/{installationId}/adopt`). Sólo una que GitHub
+  anunció; la de otra org es un 409.
 
 Los repos que la instalación deja ver aparecen en la pestaña, **sin enlazar**.
 Un repo sin enlazar no comenta nada; así empieza cada uno.

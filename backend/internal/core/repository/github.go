@@ -59,6 +59,33 @@ func (r *GitHubRepository) BindInstallation(id int64, orgID string) error {
 	})
 }
 
+// UnboundInstallations: las que llegaron por el webhook y ninguna org ató,
+// con los nombres de sus repos.
+func (r *GitHubRepository) UnboundInstallations() ([]domain.GitHubUnboundInstallation, error) {
+	var insts []domain.GitHubInstallation
+	if err := r.db.Where("org_id = '' OR org_id IS NULL").Order("created_at DESC").Find(&insts).Error; err != nil {
+		return nil, err
+	}
+	out := make([]domain.GitHubUnboundInstallation, 0, len(insts))
+	for _, i := range insts {
+		names := []string{}
+		if err := r.db.Model(&domain.GitHubRepo{}).Where("installation_id = ?", i.InstallationID).
+			Order("full_name").Pluck("full_name", &names).Error; err != nil {
+			return nil, err
+		}
+		out = append(out, domain.GitHubUnboundInstallation{InstallationID: i.InstallationID, AccountLogin: i.AccountLogin, Repos: names})
+	}
+	return out, nil
+}
+
+// InstallationExists: si GitHub la anunció. Adoptar sólo ata lo que existe;
+// `BindInstallation` crearía la fila de un id cualquiera.
+func (r *GitHubRepository) InstallationExists(id int64) bool {
+	var n int64
+	r.db.Model(&domain.GitHubInstallation{}).Where("installation_id = ?", id).Count(&n)
+	return n > 0
+}
+
 func (r *GitHubRepository) DeleteInstallation(id int64) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		// Su copia de docs se va con ellos: sin repo no hay quien la ponga al día.

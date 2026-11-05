@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/events"
@@ -96,7 +97,9 @@ func (s *GitHubService) withHub(hub *events.Hub) *GitHubService {
 
 func (s *GitHubService) Configured() bool { return s.cfg.Configured() }
 
-func (s *GitHubService) Status(orgID string) (*domain.GitHubStatusResponse, error) {
+// Status: lo de GitHub de la org. Con `superadmin`, también las instalaciones
+// que nadie ató (ver GitHubUnboundInstallation).
+func (s *GitHubService) Status(orgID string, superadmin bool) (*domain.GitHubStatusResponse, error) {
 	out := &domain.GitHubStatusResponse{Configured: s.Configured(),
 		Installations: []domain.GitHubInstallation{}, Repos: []domain.GitHubRepo{}}
 	if !out.Configured {
@@ -107,7 +110,25 @@ func (s *GitHubService) Status(orgID string) (*domain.GitHubStatusResponse, erro
 		return nil, err
 	}
 	out.Installations, out.Repos = insts, repos
+	if superadmin {
+		if out.Unbound, err = s.repo.UnboundInstallations(); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
+}
+
+// Adopt ata a la org una instalación que llegó sin org. Sólo una que GitHub
+// anunció, y sólo si sigue sin org: la que ya es de otra es
+// ErrInstallationTaken, como en Setup. Quién puede, lo decide el handler.
+func (s *GitHubService) Adopt(orgID string, installationID int64) error {
+	if !s.Configured() {
+		return ErrGitHubOff
+	}
+	if installationID <= 0 || !s.repo.InstallationExists(installationID) {
+		return gorm.ErrRecordNotFound
+	}
+	return s.repo.BindInstallation(installationID, orgID)
 }
 
 // ─── Atar una instalación a una org ───────────────────────────────────────────

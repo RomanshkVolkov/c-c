@@ -166,3 +166,38 @@ describe("muchos repos", () => {
     expect(screen.getByText(/No repository with that name/)).toBeTruthy();
   });
 });
+
+/**
+ * Una instalación sin org (GitHub no devolvió el `state`: la aprobó un owner
+ * desde GitHub, como la de CrossfireTheChilamGroup el 5-nov-2026). El backend
+ * sólo la manda a un superadmin en persona; aquí se fija que se ate
+ * preguntando antes, con sus repos a la vista, y a la ruta de esta org.
+ * Roturas que atrapa: atar sin preguntar, no enseñar los repos en la
+ * pregunta, otra ruta, o enseñar la sección a quien no administra.
+ */
+describe("una instalación sin org", () => {
+  const huerfana = { unbound: [{ installationId: 9, accountLogin: "CrossfireTheChilamGroup", repos: ["CrossfireTheChilamGroup/crossfire"] }] };
+
+  it("se ata preguntando antes y enseñando sus repos", async () => {
+    const { ConfirmProvider } = await import("@/components/ConfirmDialog");
+    api.get.mockResolvedValue(estado(huerfana));
+    api.post.mockResolvedValue({ success: true });
+    render(<ConfirmProvider><MemoryRouter><OrgGitHub canManage /></MemoryRouter></ConfirmProvider>);
+    fireEvent.click(await screen.findByRole("button", { name: /^(atar a esta organización|link to this organization)$/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("CrossfireTheChilamGroup/crossfire");
+    expect(api.post).not.toHaveBeenCalled();
+    const botones = Array.from(dialog.querySelectorAll("button")).filter((b) => /^(atar a esta organización|link to this organization)$/i.test(b.textContent ?? ""));
+    fireEvent.click(botones[botones.length - 1]);
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/api/v1/organizations/org-1/github/installations/9/adopt", {}, true),
+    );
+  });
+
+  it("quien no administra no ve la sección", async () => {
+    api.get.mockResolvedValue(estado(huerfana));
+    render(<MemoryRouter><OrgGitHub canManage={false} /></MemoryRouter>);
+    await screen.findByLabelText(/dwit\/api/);
+    expect(screen.queryByText(/CrossfireTheChilamGroup/)).toBeNull();
+  });
+});

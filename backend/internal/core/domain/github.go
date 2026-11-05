@@ -54,6 +54,20 @@ type GitHubStatusResponse struct {
 	Configured    bool                 `json:"configured"`
 	Installations []GitHubInstallation `json:"installations"`
 	Repos         []GitHubRepo         `json:"repos"`
+	// Unbound: las instalaciones que llegaron por el webhook y ninguna org ató.
+	// Sólo para un superadmin en persona: son de cualquier org de GitHub.
+	Unbound []GitHubUnboundInstallation `json:"unbound,omitempty"`
+}
+
+// GitHubUnboundInstallation: una instalación sin org, con los repos que da.
+//
+// Pasa cuando la vuelta del navegador no trae nuestro `state`: la instaló o
+// la aprobó un owner de la org de GitHub desde allí (5-nov-2026,
+// CrossfireTheChilamGroup), o el state caducó. Sin esto se quedaba invisible.
+type GitHubUnboundInstallation struct {
+	InstallationID int64    `json:"installationId"`
+	AccountLogin   string   `json:"accountLogin"`
+	Repos          []string `json:"repos"`
 }
 
 type GitHubLinkResponse struct {

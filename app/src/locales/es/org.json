@@ -144,7 +144,14 @@
     "bareRefsHint": "Que #12 sin «cac» también nombre la tarea 12. En GitHub, #12 es el issue 12 del repo.",
     "activityOf": "Actividad de CI de {{repo}}",
     "filter": "Buscar un repo",
-    "noMatch": "Ningún repo con ese nombre."
+    "noMatch": "Ningún repo con ese nombre.",
+    "unboundTitle": "Instaladas en GitHub, sin organización en cac",
+    "unboundLead": "GitHub no devolvió a cac de qué organización eran: pasa cuando la aprueba un owner desde GitHub. Sólo lo ves tú, como superadmin.",
+    "adopt": "Atar a esta organización",
+    "adoptTitle": "¿Atar {{account}} a esta organización?",
+    "adoptBody": "Sus repos ({{repos}}) quedan en esta organización para enlazarlos a un espacio. Una vez atada, ninguna otra organización se la puede llevar.",
+    "adopted": "{{account}} quedó atada a esta organización",
+    "adoptFailed": "No se pudo atar la instalación"
   },
   "zoneUnset": "Sin decidir (la de quien crea)",
   "zoneSuggested": "Sugeridas",

@@ -14,8 +14,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { APIResponse } from "@/types/auth";
-import type { GitHubRepo, GitHubStatus } from "@/types/github";
+import type { GitHubRepo, GitHubStatus, GitHubUnboundInstallation } from "@/types/github";
 import Picker from "@/components/ui/picker";
+import { useOptionalConfirm } from "@/components/ConfirmDialog";
 
 /**
  * La GitHub App de esta org: qué cuentas de GitHub la tienen instalada, y a
@@ -36,6 +37,7 @@ export default function OrgGitHub({ canManage }: { canManage: boolean }) {
   const [syncing, setSyncing] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const fetchRepoDocs = useRepoDocs((s) => s.fetchSpace);
+  const confirm = useOptionalConfirm();
 
   const base = `/api/v1/organizations/${orgId}/github`;
 
@@ -82,6 +84,30 @@ export default function OrgGitHub({ canManage }: { canManage: boolean }) {
       for (const sp of new Set([repo.spaceId, saved.spaceId])) if (sp) void fetchRepoDocs(sp, true).catch(() => {});
     } catch (e) {
       toast.error(phraseFor(e instanceof Error ? e.message : String(e), t("org:github.saveFailed")));
+    }
+  };
+
+  // Una instalación sin org (sólo la ve un superadmin): se ata a esta org
+  // preguntando antes, con su cuenta y sus repos a la vista, porque una vez
+  // atada no se la lleva otra org.
+  const adopt = async (inst: GitHubUnboundInstallation) => {
+    if (confirm) {
+      const ok = await confirm({
+        title: t("org:github.adoptTitle", { account: inst.accountLogin || inst.installationId }),
+        description: t("org:github.adoptBody", { repos: inst.repos.join(", ") || "—" }),
+        confirmText: t("org:github.adopt"),
+      });
+      if (!ok) return;
+    }
+    setBusy(true);
+    try {
+      await api.post(`${base}/installations/${inst.installationId}/adopt`, {}, true);
+      toast.success(t("org:github.adopted", { account: inst.accountLogin }));
+      await load();
+    } catch (e) {
+      toast.error(phraseFor(e instanceof Error ? e.message : String(e), t("org:github.adoptFailed")));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -141,6 +167,25 @@ export default function OrgGitHub({ canManage }: { canManage: boolean }) {
           </Button>
         )}
       </div>
+
+      {canManage && (status.unbound?.length ?? 0) > 0 && (
+        <div className="space-y-2 rounded-md border border-dashed p-3">
+          <p className="text-sm font-medium">{t("org:github.unboundTitle")}</p>
+          <p className="text-xs text-muted-foreground">{t("org:github.unboundLead")}</p>
+          <ul className="space-y-1.5">
+            {status.unbound!.map((inst) => (
+              <li key={inst.installationId} className="flex flex-wrap items-center gap-2 text-sm">
+                <Github className="size-3.5" />
+                <span className="font-medium">{inst.accountLogin || inst.installationId}</span>
+                <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">{inst.repos.join(", ")}</span>
+                <Button variant="outline" size="sm" disabled={busy} onClick={() => void adopt(inst)}>
+                  {t("org:github.adopt")}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Una instalación de una cuenta entera trae decenas de repos: se busca
           por nombre, y los atados a un espacio van primero, que son los que

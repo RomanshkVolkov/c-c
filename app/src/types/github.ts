@@ -6,6 +6,17 @@ export interface GitHubInstallation {
   orgId: string;
 }
 
+/**
+ * Una instalación que llegó por el webhook y ninguna org ató: GitHub no
+ * devolvió nuestro `state` (la aprobó un owner desde GitHub, o caducó). Sólo
+ * la ve un superadmin en persona. Ver `domain.GitHubUnboundInstallation`.
+ */
+export interface GitHubUnboundInstallation {
+  installationId: number;
+  accountLogin: string;
+  repos: string[];
+}
+
 /** Un repo de una instalación. `spaceId` vacío = no enlazado: no comenta nada. */
 export interface GitHubRepo {
   id: string;
@@ -69,4 +80,6 @@ export interface GitHubStatus {
   configured: boolean;
   installations: GitHubInstallation[];
   repos: GitHubRepo[];
+  /** Sólo para un superadmin en persona; si no, no viene. */
+  unbound?: GitHubUnboundInstallation[];
 }

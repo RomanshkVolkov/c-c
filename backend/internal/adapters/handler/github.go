@@ -52,7 +52,7 @@ func (h *GitHubHandler) Status(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	out, err := h.svc.Status(orgID)
+	out, err := h.svc.Status(orgID, inPersonSuperadmin(r))
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "GitHub status failed", err.Error())
 		return
@@ -71,6 +71,38 @@ func (h *GitHubHandler) Link(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[*domain.GitHubLinkResponse]{Success: true, Data: &domain.GitHubLinkResponse{URL: u}})
+}
+
+// inPersonSuperadmin: un superadmin con su sesión, no con un token. Una
+// instalación sin org puede ser de cualquier cuenta de GitHub: verla y
+// atarla es de una persona, no de un agente que lleva su token (ver
+// «Un token personal es la persona para los scopes, pero no para firmar»).
+func inPersonSuperadmin(r *http.Request) bool {
+	user, ok := currentUser(r)
+	return ok && user.Superadmin && !user.ViaToken
+}
+
+// AdoptInstallation — POST …/github/installations/{installationId}/adopt.
+// Ata a esta org una instalación que llegó sin org (GitHub no devolvió
+// nuestro `state`). Admin de la org **y** superadmin en persona.
+func (h *GitHubHandler) AdoptInstallation(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := scopeOrg(w, r, domain.OrgRoleAdmin)
+	if !ok {
+		return
+	}
+	if !inPersonSuperadmin(r) {
+		SendErrorResponse(w, http.StatusForbidden, "Only a superadmin, in person, adopts an installation", "superadmin-in-person")
+		return
+	}
+	id, _ := strconv.ParseInt(chi.URLParam(r, "installationId"), 10, 64)
+	switch err := h.svc.Adopt(orgID, id); {
+	case err == nil:
+		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, repository.ErrInstallationTaken):
+		SendErrorResponse(w, http.StatusConflict, "That installation belongs to another organization", "installation-taken")
+	default:
+		githubError(w, err)
+	}
 }
 
 func (h *GitHubHandler) UpdateRepo(w http.ResponseWriter, r *http.Request) {

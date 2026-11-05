@@ -144,7 +144,14 @@
     "bareRefsHint": "Let #12 without «cac» name task 12 too. On GitHub, #12 is the repo's issue 12.",
     "activityOf": "CI activity of {{repo}}",
     "filter": "Find a repository",
-    "noMatch": "No repository with that name."
+    "noMatch": "No repository with that name.",
+    "unboundTitle": "Installed on GitHub, with no organization in cac",
+    "unboundLead": "GitHub didn't tell cac which organization they were for: it happens when an owner approves it from GitHub. Only you see this, as a superadmin.",
+    "adopt": "Link to this organization",
+    "adoptTitle": "Link {{account}} to this organization?",
+    "adoptBody": "Its repos ({{repos}}) join this organization, ready to link to a space. Once linked, no other organization can take it.",
+    "adopted": "{{account}} is now linked to this organization",
+    "adoptFailed": "Couldn't link the installation"
   },
   "zoneUnset": "Not set (the creator's)",
   "zoneSuggested": "Suggested",

@@ -245,5 +245,7 @@
   "incident-already-superseded": "Ese incidente ya se sustituyó; nombra el que lo sustituyó.",
   "incident-nothing-to-add": "No hay nada que añadir: pasa un commit, una prueba, un servidor o un área.",
   "no-such-server": "Esta organización no tiene un servidor con ese nombre.",
-  "bad-commit": "Eso no es un commit: pasa un sha o owner/repo@sha."
+  "bad-commit": "Eso no es un commit: pasa un sha o owner/repo@sha.",
+  "installation-taken": "Esa instalación ya es de otra organización.",
+  "superadmin-in-person": "Sólo un superadmin, con su sesión (no con un token), puede hacer esto."
 }
