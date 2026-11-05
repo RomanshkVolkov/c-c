@@ -2425,6 +2425,24 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "compress_pdf",
+            "description": "Shrink a PDF on this machine before attaching it: its images are resampled to the resolution it will be read at (what makes a scan or a deck of screenshots heavy), using the Ghostscript installed here. Reads and writes files by path — nothing is uploaded and no server is involved. Writes the copy only if it came out smaller (a PDF that is mostly text often doesn't); the original is never touched. Needs no scope; it never touches cac.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Absolute path of the PDF to read." },
+                    "outPath": { "type": "string", "description": "Absolute path to write it to. Omit to write `<name>-compressed.pdf` beside the original. Never the original itself." },
+                    "quality": {
+                        "type": "string",
+                        "enum": ["screen", "ebook", "printer"],
+                        "description": "Image resolution: screen 72 dpi (smallest), ebook 150 dpi (default: reads well, prints decently), printer 300 dpi."
+                    },
+                    "dryRun": { "type": "boolean", "description": "Report what would be written without writing it." }
+                },
+                "required": ["path"]
+            }
+        },
+        {
             "name": "install_skill",
             "description": "Install (or update) the cac skills for Claude Code on this machine: cac-work (how to find a repository's place in cac, read its docs before starting, register the work as a task, record decisions and keep it all up to date) and cac-consolidar (the weekly pass that proposes what to promote, record or retire). Writes two fixed files, skills/cac-work/SKILL.md and skills/cac-consolidar/SKILL.md in the Claude Code config folder, with the text shipped inside this cac app — nothing is downloaded. ASK THE USER FIRST; call it only when they agreed. It takes effect in the next session. Needs no scope; it never touches cac.",
             "inputSchema": {
@@ -3042,6 +3060,10 @@ fn load_source(source: &AttachmentSource) -> Result<(Vec<u8>, String, String), S
             let bytes = crate::dropped::read_path(path).map_err(|e| match e.as_str() {
                 "type-not-allowed" => format!(
                     "{} can't be attached: only images, PDF, office documents, audio, video, zip or csv",
+                    path.display()
+                ),
+                "too-large" if crate::dropped::mime_of(path) == "application/pdf" => format!(
+                    "{} is bigger than the 30 MB an attachment can be; shrink it first with compress_pdf",
                     path.display()
                 ),
                 "too-large" => format!("{} is bigger than the 30 MB an attachment can be", path.display()),
@@ -5740,7 +5762,7 @@ const TRAPS_SECTION: &str = "Trampas que ya han mordido";
 
 /// Tools that run entirely on this machine and never call cac, so they work
 /// with no token configured at all.
-const LOCAL_TOOLS: &[&str] = &["compress_image", "install_skill"];
+const LOCAL_TOOLS: &[&str] = &["compress_image", "compress_pdf", "install_skill"];
 
 /// Cómo se nombra una tarea en un commit o una PR para que cac la enlace sola
 /// (`domain/task_refs.go`): el folio si es de un cliente (`acme-7`), y si no la
@@ -6436,6 +6458,44 @@ fn call_local_tool(name: &str, args: &Value) -> Result<Value, String> {
                     (saved as f64 / result.original_bytes as f64 * 100.0).round()
                 } else { 0.0 },
             }))
+        }
+
+        // Como compress_image, por rutas: un PDF de 40 MB no cabe como texto en
+        // la conversación de nadie. Ghostscript es el del sistema (`pdf.rs`).
+        "compress_pdf" => {
+            let path = std::path::PathBuf::from(arg_str(args, "path").ok_or("path is required")?);
+            let quality = crate::pdf::Quality::parse(&arg_str(args, "quality").unwrap_or_else(|| "ebook".into()))?;
+            let out_path = arg_str(args, "outPath")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| crate::pdf::default_out_path(&path));
+
+            if arg_bool(args, "dryRun") {
+                let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                return Ok(json!({
+                    "wouldRead": path.display().to_string(),
+                    "wouldWrite": out_path.display().to_string(),
+                    "quality": quality.name(),
+                    "originalBytes": size,
+                    "dryRun": true,
+                }));
+            }
+
+            match crate::pdf::compress(&path, &out_path, quality)? {
+                crate::pdf::Outcome::Written { original_bytes, bytes } => Ok(json!({
+                    "path": out_path.display().to_string(),
+                    "quality": quality.name(),
+                    "originalBytes": original_bytes,
+                    "bytes": bytes,
+                    "savedPercent": ((original_bytes - bytes) as f64 / original_bytes as f64 * 100.0).round(),
+                })),
+                crate::pdf::Outcome::NotSmaller { original_bytes, result_bytes } => Ok(json!({
+                    "path": path.display().to_string(),
+                    "written": false,
+                    "originalBytes": original_bytes,
+                    "resultBytes": result_bytes,
+                    "note": "It did not come out smaller, so nothing was written: attach the original. A lower quality (screen) may still help if it has images.",
+                })),
+            }
         }
 
         other => Err(format!("unknown tool: {other}")),
@@ -8255,6 +8315,20 @@ mod tests {
         assert!(def["description"].as_str().unwrap().contains("ASK THE USER FIRST"));
         let init = handle(&json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize" }), &Err("sin token".into())).unwrap();
         assert!(init["result"]["instructions"].as_str().unwrap().contains("update the task"));
+    }
+
+    /// Rotura que detecta: que comprimir un PDF pida token (no habla con cac)
+    /// o que no se anuncie con sus tres calidades.
+    #[test]
+    fn compress_pdf_is_local_and_listed() {
+        assert!(LOCAL_TOOLS.contains(&"compress_pdf"));
+        let defs = tool_defs();
+        let t = tool(&defs, "compress_pdf");
+        assert_eq!(t["inputSchema"]["properties"]["quality"]["enum"], json!(["screen", "ebook", "printer"]));
+        let dry = call_local_tool("compress_pdf", &json!({ "path": "/tmp/a/informe.pdf", "dryRun": true })).unwrap();
+        assert_eq!(dry["wouldWrite"], "/tmp/a/informe-compressed.pdf");
+        assert_eq!(dry["quality"], "ebook");
+        assert!(call_local_tool("compress_pdf", &json!({ "path": "/x.pdf", "quality": "max" })).is_err());
     }
 
     #[test]

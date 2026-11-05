@@ -17,6 +17,7 @@ mod download;
 mod http_client;
 mod image;
 mod notify;
+mod pdf;
 mod mcp;
 mod provision_cli;
 mod media;
