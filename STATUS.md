@@ -13,6 +13,20 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**5-nov, en `main`: cac sin que nadie lo recuerde** (command-and-control-314,
+plan aprobado por jose). Medido en las 3 sesiones de crossfire: 16 «usa cac»
+con 317 llamadas a cac hechas; 12 eran escrituras que no se veían.
+- **Desplegado** (backend + web): un superadmin en persona ata una
+  instalación de GitHub que llegó sin org (`e2b9db2`; la de
+  `CrossfireTheChilamGroup` está así en producción), y `inProgress` lleva las
+  claves de Jira que nombra cada tarea (`fd6c5ce`).
+- **En el repo, ya corriendo aquí**: `cac-wrote` (cada escritura en cac, una
+  línea en la terminal) y `cac-prompt` trae el «dónde quedó» de la tarea o el
+  ticket que nombras.
+- **Sale en la próxima release de la app**: `install_hooks` (los hooks globales
+  para todos los repos, más `cac-mirror` con Jira y el handoff sin commits),
+  skill `cac-work` v23.
+
 **3-nov, en `main`: gstd como servidor de cac, fases A y B**
 (command-and-control-300; diseño en la página «Diseño · gstd como servidor
 de cac» del espacio). Lo que pixel-vps enseñó, corregido en `infra/ansible`:
