@@ -204,6 +204,26 @@ func TestABackendDeployKeepsServing(t *testing.T) {
 	}
 }
 
+// El backend reserva CPU y memoria y tiene tope de memoria. Sin reserva es
+// BestEffort, y en gstd el nodo lo comparte con el CI de TCG: con la CPU llena
+// le tocaba la parte mínima (la API lenta mientras corre un PR), y con la
+// memoria corta era lo primero que desalojaba el kubelet, antes que un pod de
+// pruebas. Roturas que atrapa: quitar `resources`, o cualquiera de las tres.
+func TestTheBackendReservesWhatItNeeds(t *testing.T) {
+	var dep doc
+	for _, d := range docs(t, "2-deployment.yaml") {
+		if d["kind"] == "Deployment" {
+			dep = d
+		}
+	}
+	api := m(dep, "spec", "template", "spec").(doc)["containers"].([]any)[0].(doc)
+	for _, path := range [][]string{{"requests", "cpu"}, {"requests", "memory"}, {"limits", "memory"}} {
+		if v, _ := m(api["resources"], path...).(string); v == "" {
+			t.Errorf("cac-service sin resources.%s: es BestEffort y cede ante el CI", strings.Join(path, "."))
+		}
+	}
+}
+
 // Los mismos manifiestos se despliegan en dos clústeres a la vez hasta la
 // mudanza: en pixel-vps a `default` (por SSH) y en gstd a `cac` (deploy.sh,
 // con `-n cac`). Eso sólo funciona si ningún manifiesto fija su namespace: uno

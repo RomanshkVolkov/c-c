@@ -37,6 +37,13 @@ spec:
         - name: cac-service-api
           image: ghcr.io/g-studio-labs/c-c/backend:latest
           imagePullPolicy: Always
+          # Sin reserva el pod es BestEffort: en gstd comparte nodo con el CI
+          # de TCG (runner-isolated), y con la CPU llena recibía la parte
+          # mínima; con la memoria corta, era el primero en ser desalojado. Usa
+          # ~32Mi en reposo; el tope deja margen para las subidas (30 MB).
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 1Gi}
           # Listo cuando contesta: `/health` no toca la base, y el servidor
           # sólo escucha después de migrar. Sin esto, el proxy mandaba tráfico
           # a un pod que todavía estaba arrancando.
