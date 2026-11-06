@@ -9,6 +9,7 @@
 # del superusuario, del dueño y de los roles de la app). Idempotente.
 - name: Postgres para hah
   hosts: swarm
-  become: true
+  # Sin become: el usuario de operación entra con el grupo docker y escribe
+  # sólo bajo su home.
   roles:
     - {role: postgres, tags: [postgres]}
