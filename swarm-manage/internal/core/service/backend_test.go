@@ -2,11 +2,12 @@ package service
 
 import (
 	"context"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strconv"
 	"strings"
-	"net/http"
-	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -85,6 +86,43 @@ func TestThePollerBacksOffAfterAFailure(t *testing.T) {
 	// cientos.
 	if n := preguntas.Load(); n > 5 {
 		t.Errorf("preguntó %d veces en 350 ms: no espera tras un fallo", n)
+	}
+}
+
+// Tras un fallo, la siguiente pregunta va por una conexión nueva: si no, un
+// agente pegado por keep-alive al servidor viejo de cac nunca vuelve a
+// resolver el DNS (5-nov-2026). Rotura que atrapa: no soltar la conexión.
+func TestAfterAFailureThePollerDialsAgain(t *testing.T) {
+	var preguntas, conexiones atomic.Int32
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if preguntas.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	srv.Config.ConnState = func(_ net.Conn, s http.ConnState) {
+		if s == http.StateNew {
+			conexiones.Add(1)
+		}
+	}
+	srv.Start()
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	p := NewPoller(srv.URL, "cac_agent_x")
+	p.Wait = 0
+	p.MinBackoff, p.MaxBackoff = 10*time.Millisecond, 10*time.Millisecond
+	p.Run(ctx)
+
+	if n := preguntas.Load(); n < 3 {
+		t.Fatalf("preguntó %d veces", n)
+	}
+	// Un 503 y después 204 por keep-alive: dos conexiones (la del fallo y
+	// la nueva). Sin soltarla, una sola para todo.
+	if n := conexiones.Load(); n != 2 {
+		t.Errorf("%d conexiones; tras el fallo tenía que abrir una nueva y seguir con ella", n)
 	}
 }
 

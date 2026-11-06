@@ -24,7 +24,7 @@ import (
 // Version es la versión de este agente, la de `swarm-manage/VERSION`. Va en
 // cada pregunta (`X-Agent-Version`): el backend no le encola un deploy a un
 // agente que no sabe hacerlo. Lo ata al fichero `TestTheVersionIsTheFile`.
-const Version = 13
+const Version = 14
 
 type Poller struct {
 	BaseURL string
@@ -73,6 +73,13 @@ func (p *Poller) Run(ctx context.Context) {
 				return
 			}
 			log.Printf("backend: %v; reintento en %s", err, backoff)
+			// La conexión se suelta: el siguiente intento vuelve a marcar, y
+			// con eso a resolver el DNS. Con keep-alive, el agente seguía
+			// preguntando por la conexión que abrió antes de que cac cambiara
+			// de servidor; el viejo le contestaba 503 para siempre y el
+			// servidor se veía caído (boaty, tds, mayan tours y development,
+			// 5-nov-2026, al mudar cac de pixel-vps a gstd).
+			p.Client.CloseIdleConnections()
 			select {
 			case <-time.After(backoff):
 			case <-ctx.Done():
