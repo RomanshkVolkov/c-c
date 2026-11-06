@@ -1,0 +1,41 @@
+# {{ ansible_managed }}
+# Runner scale set de otra org, sin Docker (ver roles/runner_isolated). Los
+# workflows lo usan con `runs-on: {{ runner_isolated_name }}`.
+githubConfigUrl: "{{ runner_isolated_github_config_url }}"
+githubConfigSecret: arc-github
+
+controllerServiceAccount:
+  namespace: arc-systems
+  name: arc-gha-rs-controller
+
+runnerScaleSetName: "{{ runner_isolated_name }}"
+minRunners: 0
+maxRunners: {{ runner_isolated_max }}
+
+# Un job con `container:` o `services:` corre en un pod aparte que crea el hook
+# de ARC, sin privilegios; el chart le da a la cuenta del runner un Role SÓLO
+# en este namespace para crearlo. El directorio de trabajo es un volumen que
+# comparten los dos pods.
+containerMode:
+  type: kubernetes
+  kubernetesModeWorkVolumeClaim:
+    accessModes: ["ReadWriteOnce"]
+    storageClassName: local-path
+    resources:
+      requests:
+        storage: 10Gi
+
+template:
+  spec:
+    containers:
+      - name: runner
+        image: "{{ runner_image }}"
+        command: ["/home/runner/run.sh"]
+        env:
+          # Un job sin `container:` corre en el pod del runner, que tampoco es
+          # privilegiado; exigirlo obligaría a reescribir cada job sencillo.
+          - name: ACTIONS_RUNNER_REQUIRE_JOB_CONTAINER
+            value: "false"
+        resources:
+          requests: {cpu: "1", memory: 2Gi}
+          limits: {memory: 6Gi}

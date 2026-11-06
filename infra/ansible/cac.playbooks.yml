@@ -351,6 +351,54 @@ playbooks:
     vars:
       - { name: runner_scale_set_name, required: true }
 
+  - id: runner-isolated
+    file: playbooks/runner-isolated-site.yml
+    name: Runner aislado para otra org
+    description: >-
+      Encima de runner: un scale set para la org de un cliente, en su propio
+      namespace y sin Docker privilegiado (modo kubernetes de ARC), con una
+      política de red que no le deja llegar a nada del clúster y una cuota.
+      Sólo CI, sin permisos de despliegue. Trae sus propios secretos.
+    hosts: k8s_control_plane
+    risk: change
+    verify: runner-isolated-verify
+    # Quitarlo es desinstalar el chart y borrar su namespace; se decide a mano.
+    rollback: manual
+    become: true
+    become_password_from: OPS_PASSWORD
+    vars:
+      - { name: runner_arc_version, description: "La del controlador que puso runner (ARC no admite mezclarlas).", default: "0.15.1" }
+      - { name: runner_image, description: "La misma imagen que el runner de cac.", required: true }
+      - { name: runner_isolated_name, description: "El nombre del scale set: lo que va en `runs-on`. Su namespace es arc-runners-<nombre>.", required: true }
+      - { name: runner_isolated_github_config_url, description: "La org de GitHub del cliente donde se registra.", required: true }
+      - { name: runner_isolated_max, description: Cuántos jobs a la vez como mucho., default: 4 }
+      - { name: runner_isolated_cpu, description: "CPU reservada como mucho entre todos sus pods (cuota).", default: "8" }
+      - { name: runner_isolated_memory, description: "Memoria reservada como mucho entre todos sus pods (cuota).", default: 16Gi }
+      - name: runner_isolated_github_app_id
+        secret: true
+        from: ISOLATED_ARC_GITHUB_APP_ID
+      - name: runner_isolated_github_app_installation_id
+        secret: true
+        from: ISOLATED_ARC_GITHUB_APP_INSTALLATION_ID
+      - name: runner_isolated_github_app_private_key
+        description: La llave PEM de la GitHub App de la org del cliente.
+        secret: true
+        from: ISOLATED_ARC_GITHUB_APP_PRIVATE_KEY
+
+  - id: runner-isolated-verify
+    file: playbooks/runner-isolated-verify.yml
+    name: Verificar el runner aislado
+    description: >-
+      Listener conectado, sin Docker privilegiado, la cuenta del runner sin
+      permisos fuera de su namespace, y un pod de prueba (se borra solo) que no
+      llega a Postgres, Valkey ni cac pero sí al API y a internet.
+    hosts: k8s_control_plane
+    risk: read
+    become: true
+    become_password_from: OPS_PASSWORD
+    vars:
+      - { name: runner_isolated_name, required: true }
+
   - id: cac-secrets
     file: playbooks/cac-secrets-site.yml
     name: Secretos de cac

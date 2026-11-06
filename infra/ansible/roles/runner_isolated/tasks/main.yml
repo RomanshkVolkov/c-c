@@ -1,0 +1,150 @@
+---
+# Un runner scale set para la org de otro (un cliente), encima del controlador
+# de ARC que puso `runner`. Lo que lo distingue del de `runner` es que sus jobs
+# no son nuestros: corren en el mismo nodo que cac de producción, así que
+#   - sin Docker privilegiado (dind es root en el nodo): modo `kubernetes` de
+#     ARC, donde un job con `container:`/`services:` es un pod sin privilegios;
+#   - su propio namespace, con Pod Security `baseline` (nada privilegiado, ni
+#     hostPath, ni hostNetwork);
+#   - una política de red que sólo le deja salir a internet, al DNS y al API de
+#     Kubernetes (el hook crea ahí los pods del job): ni cac, ni su Postgres, ni
+#     Valkey, ni el nodo;
+#   - una cuota, para que una tanda de pruebas no se coma la máquina.
+# Sin permisos de despliegue: es CI, no entrega. Los únicos permisos son los
+# que pone el chart en modo kubernetes: crear pods y leer secretos en ESTE
+# namespace. Un job puede leer, pues, la llave de la App de su propia org; nada
+# de cac ni de otra org.
+
+- name: Namespace del scale set
+  ansible.builtin.set_fact:
+    runner_isolated_namespace: "arc-runners-{{ runner_isolated_name }}"
+    runner_isolated_values: "/etc/cac/runner-isolated-{{ runner_isolated_name }}-values.yaml"
+
+- name: Hay imagen del runner
+  ansible.builtin.assert:
+    that: runner_image | default('') | length > 0
+    fail_msg: >-
+      Falta runner_image: la misma que la del runner de cac
+      (ghcr.io/g-studio-labs/actions-runner:<fecha>-<sha>).
+    quiet: true
+
+# El controlador es de `runner`: uno por clúster, y su versión manda. Aquí sólo
+# se comprueba que está y que es la misma que la del chart del scale set (ARC no
+# admite mezclarlas). Instalarlo desde dos playbooks es tener dos dueños.
+- name: Versión del controlador de ARC
+  ansible.builtin.shell:
+    cmd: helm -n arc-systems list -f '^arc$' -o json
+  register: arc_controller
+  changed_when: false
+  check_mode: false
+
+- name: El controlador es el de runner y con la misma versión
+  ansible.builtin.assert:
+    that:
+      - arc_controller.stdout | from_json | length == 1
+      - (arc_controller.stdout | from_json)[0].chart == 'gha-runner-scale-set-controller-' ~ runner_arc_version
+    fail_msg: >-
+      El controlador de ARC no está, o no es la {{ runner_arc_version }}. Aplica
+      antes `runner` en este servidor, con la misma runner_arc_version.
+    quiet: true
+
+- name: Namespace, Pod Security, cuota y límites por defecto
+  ansible.builtin.shell:
+    cmd: kubectl apply --server-side --force-conflicts -f -
+    stdin: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: {{ runner_isolated_namespace }}
+        labels:
+          pod-security.kubernetes.io/enforce: baseline
+          pod-security.kubernetes.io/warn: baseline
+      ---
+      # Sobre lo reservado, no sobre los topes: la suma de topes de cuatro
+      # jobs con su Postgres pasa de cualquier cifra sensata y el job fallaría
+      # con un error de cuota. Lo que protege a cac es que lo suyo está
+      # reservado: si la memoria aprieta, el kubelet desaloja primero a quien
+      # se pasó de su reserva, que es un pod de CI.
+      apiVersion: v1
+      kind: ResourceQuota
+      metadata: {name: ci, namespace: {{ runner_isolated_namespace }}}
+      spec:
+        hard:
+          requests.cpu: "{{ runner_isolated_cpu }}"
+          requests.memory: "{{ runner_isolated_memory }}"
+          persistentvolumeclaims: "{{ runner_isolated_max | int * 2 }}"
+      ---
+      # Los pods del job los crea el hook de ARC sin recursos: esto les pone
+      # reserva y tope, y nadie pasa de 8Gi.
+      apiVersion: v1
+      kind: LimitRange
+      metadata: {name: ci, namespace: {{ runner_isolated_namespace }}}
+      spec:
+        limits:
+          - type: Container
+            defaultRequest: {cpu: 250m, memory: 512Mi}
+            default: {memory: 4Gi}
+            max: {memory: 8Gi}
+    stdin_add_newline: false
+  register: isolated_ns
+  changed_when: "'serverside-applied' in isolated_ns.stdout and 'unchanged' not in isolated_ns.stdout"
+
+# Cilium: con una política que elige a un pod, todo lo que no se permite se
+# niega. `world` no incluye el nodo (eso es `host`), ni las IP de servicios del
+# clúster, que se traducen a pods de otros namespaces.
+- name: Red del namespace
+  ansible.builtin.shell:
+    cmd: kubectl apply --server-side --force-conflicts -f -
+    stdin: |
+      apiVersion: cilium.io/v2
+      kind: CiliumNetworkPolicy
+      metadata: {name: ci-isolated, namespace: {{ runner_isolated_namespace }}}
+      spec:
+        endpointSelector: {}
+        ingress:
+          - fromEndpoints: [{}]
+        egress:
+          - toEndpoints: [{}]
+          - toEntities: [world, kube-apiserver]
+          - toEndpoints:
+              - matchLabels:
+                  k8s:io.kubernetes.pod.namespace: kube-system
+                  k8s-app: kube-dns
+            toPorts:
+              - ports:
+                  - {port: "53", protocol: ANY}
+    stdin_add_newline: false
+  register: isolated_policy
+  changed_when: "'serverside-applied' in isolated_policy.stdout and 'unchanged' not in isolated_policy.stdout"
+
+- name: Secreto de su GitHub App
+  ansible.builtin.shell:
+    cmd: kubectl apply --server-side --force-conflicts -f -
+    stdin: |
+      apiVersion: v1
+      kind: Secret
+      metadata: {name: arc-github, namespace: {{ runner_isolated_namespace }}}
+      type: Opaque
+      data:
+        github_app_id: "{{ runner_isolated_github_app_id | string | b64encode }}"
+        github_app_installation_id: "{{ runner_isolated_github_app_installation_id | string | b64encode }}"
+        github_app_private_key: "{{ runner_isolated_github_app_private_key | b64encode }}"
+    stdin_add_newline: false
+  register: isolated_secret
+  changed_when: "'serverside-applied' in isolated_secret.stdout and 'unchanged' not in isolated_secret.stdout"
+  no_log: true
+
+- name: Values del scale set
+  ansible.builtin.template:
+    src: runner-isolated-values.yaml.j2
+    dest: "{{ runner_isolated_values }}"
+    mode: "0600"
+
+- name: Scale set {{ runner_isolated_name }} (ARC {{ runner_arc_version }}, modo kubernetes)
+  kubernetes.core.helm:
+    name: "{{ runner_isolated_name }}"
+    chart_ref: oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+    chart_version: "{{ runner_arc_version }}"
+    release_namespace: "{{ runner_isolated_namespace }}"
+    values_files: ["{{ runner_isolated_values }}"]
+    wait: true

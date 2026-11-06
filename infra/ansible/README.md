@@ -17,7 +17,13 @@ Playbooks para dejar un servidor listo desde cero, por etapas:
    el bus de cac-service, imagen oficial fijada por digest, contraseña desde
    1Password, AOF en un PVC, sin Sentinel) y el **runner de GitHub Actions**
    (`runner`: ARC con un scale set registrado por una GitHub App, un pod por
-   job; la imagen y el uso están en `g-studio-labs/actions-runner`).
+   job; la imagen y el uso están en `g-studio-labs/actions-runner`). Para la
+   org de un cliente, **`runner-isolated`** encima de `runner`: su scale set en
+   `arc-runners-<nombre>`, sin Docker privilegiado (modo kubernetes de ARC: un
+   job con `container:`/`services:` es un pod sin privilegios), Pod Security
+   `baseline`, una política de Cilium que sólo le deja salir a internet, al DNS
+   y al API, y una cuota. Su verify lanza un pod que tiene que llegar a internet
+   y no a Postgres, Valkey ni cac.
 
 Los dos emiten un certificado wildcard `*.<base_domain>` por reto DNS en
 Cloudflare, y dejan un `whoami.<base_domain>` como prueba de humo. En

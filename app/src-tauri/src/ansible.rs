@@ -2064,6 +2064,90 @@ playbooks:
         assert!(verify.contains("can-i --list --as=system:serviceaccount:arc-runners:arc-runner"), "el verify no mira los permisos de los pods");
     }
 
+    // El runner de la org de otro corre en el nodo de cac de producción, así
+    // que no es una copia del de cac: sin dind (root en el nodo), su propio
+    // namespace con Pod Security, una política de red que sólo deja salir a
+    // internet, al DNS y al API, y ningún permiso que no ponga el chart.
+    // Roturas que atrapa: volver a dind; que instale su propio controlador
+    // (dos dueños, versiones mezcladas); darle un Role o RoleBinding propio;
+    // la llave fuera de stdin o sin no_log; quitar Pod Security, la cuota o
+    // los límites por defecto; abrir la red a `cluster`, `host`, `all` o por
+    // CIDR; un verify que no prueba que cac queda fuera.
+    #[test]
+    fn the_isolated_runner_has_no_docker_and_cannot_reach_cac() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let m = parse_manifest(&std::fs::read_to_string(root.join(MANIFEST_FILE)).unwrap()).unwrap();
+        let pb = m.playbooks.iter().find(|p| p.id == "runner-isolated").expect("sin playbook runner-isolated");
+        assert_eq!((pb.risk.as_deref(), pb.verify.as_deref()), (Some(RISK_CHANGE), Some("runner-isolated-verify")));
+        for secret in ["ISOLATED_ARC_GITHUB_APP_ID", "ISOLATED_ARC_GITHUB_APP_INSTALLATION_ID", "ISOLATED_ARC_GITHUB_APP_PRIVATE_KEY"] {
+            assert!(pb.vars.iter().any(|v| v.secret && v.from.as_deref() == Some(secret)), "runner-isolated no declara el secreto {secret}");
+        }
+
+        let tasks = ansible_tasks(&std::fs::read_to_string(root.join("roles/runner_isolated/tasks/main.yml")).unwrap());
+        let text = |t: &serde_yaml::Value| serde_yaml::to_string(t).unwrap();
+        let charts: Vec<&serde_yaml::Value> = tasks.iter().filter_map(|t| t.get("kubernetes.core.helm")).collect();
+        assert_eq!(charts.len(), 1, "instala algo más que su scale set");
+        assert!(charts[0]["chart_ref"].as_str().unwrap().ends_with("/gha-runner-scale-set"), "instala algo que no es su scale set (¿su propio controlador?)");
+        assert_eq!(charts[0]["chart_version"].as_str(), Some("{{ runner_arc_version }}"));
+        for kind in ["kind: Role", "kind: RoleBinding", "kind: ClusterRole"] {
+            assert!(!tasks.iter().any(|t| text(t).contains(kind)), "el rol da permisos propios ({kind}); los únicos son los del chart");
+        }
+        let stdin_of = |needle: &str| -> String {
+            tasks
+                .iter()
+                .filter_map(|t| t.get("ansible.builtin.shell").and_then(|s| s.get("stdin")).and_then(|s| s.as_str()).map(|s| (t, s)))
+                .find(|(_, s)| s.contains(needle))
+                .map(|(t, s)| {
+                    if needle == "github_app_private_key" {
+                        assert_eq!(t["no_log"].as_bool(), Some(true), "la llave de la App sale en el log");
+                    }
+                    s.to_string()
+                })
+                .unwrap_or_else(|| panic!("ninguna tarea aplica «{needle}» por stdin"))
+        };
+        stdin_of("github_app_private_key");
+        let docs = |s: String| -> Vec<serde_yaml::Value> {
+            serde_yaml::Deserializer::from_str(&s.replace("{{ runner_isolated_namespace }}", "ns"))
+                .map(|d| serde_yaml::Value::deserialize(d).unwrap())
+                .collect()
+        };
+        let ns = docs(stdin_of("kind: Namespace"));
+        let namespace = ns.iter().find(|d| d["kind"] == "Namespace").unwrap();
+        assert_eq!(namespace["metadata"]["labels"]["pod-security.kubernetes.io/enforce"].as_str(), Some("baseline"), "sin Pod Security");
+        for kind in ["ResourceQuota", "LimitRange"] {
+            assert!(ns.iter().any(|d| d["kind"] == kind), "sin {kind} en su namespace");
+        }
+
+        let policy = docs(stdin_of("CiliumNetworkPolicy")).remove(0);
+        assert_eq!(policy["spec"]["endpointSelector"], serde_yaml::Value::Mapping(Default::default()), "la política no elige a todo el namespace");
+        let allowed = ["world", "kube-apiserver"];
+        for rule in policy["spec"]["egress"].as_sequence().unwrap() {
+            assert!(rule.get("toCIDR").is_none() && rule.get("toCIDRSet").is_none(), "la red se abre por CIDR");
+            for e in rule["toEntities"].as_sequence().into_iter().flatten() {
+                assert!(allowed.contains(&e.as_str().unwrap()), "la red se abre a {e:?}");
+            }
+            for ep in rule["toEndpoints"].as_sequence().into_iter().flatten() {
+                let labels = &ep["matchLabels"];
+                let own_namespace = ep.as_mapping().is_some_and(|m| m.is_empty());
+                let dns = labels["k8s-app"].as_str() == Some("kube-dns");
+                assert!(own_namespace || dns, "la red se abre a otros pods: {ep:?}");
+            }
+        }
+
+        let values = std::fs::read_to_string(root.join("roles/runner_isolated/templates/runner-isolated-values.yaml.j2")).unwrap();
+        let v: serde_yaml::Value = serde_yaml::from_str(&values.replace("{{ runner_isolated_max }}", "4")).unwrap();
+        assert_eq!(v["containerMode"]["type"].as_str(), Some("kubernetes"), "los jobs de otra org con Docker privilegiado");
+        assert_eq!(v["minRunners"].as_i64(), Some(0), "hay runners encendidos sin jobs");
+        assert!(v["template"]["spec"]["serviceAccountName"].is_null(), "los pods no usan la cuenta que el chart limita a su namespace");
+        assert!(!values.contains("privileged"), "un contenedor privilegiado");
+
+        let verify = std::fs::read_to_string(root.join("playbooks/runner-isolated-verify.yml")).unwrap();
+        assert!(verify.contains("-gha-rs-kube-mode -n default"), "el verify no mira los permisos de la cuenta fuera de su namespace");
+        for target in ["postgres-rw.data:5432", "valkey.data:6379", "cac-service.cac:80"] {
+            assert!(verify.contains(target), "el verify no prueba que {target} queda fuera");
+        }
+    }
+
     // Los secretos de cac no pasan por GitHub: los pone el playbook
     // cac-secrets desde 1Password (la cuenta Familia no permite service
     // accounts, y así no hay token de larga vida en el repo). Roturas que

@@ -1,0 +1,10 @@
+---
+# Un runner scale set de GitHub Actions para la org de otro (un cliente), en
+# su propio namespace y sin Docker privilegiado: sus jobs corren en el mismo
+# nodo que cac de producción. Encima de `runner`, que pone el controlador de
+# ARC. El porqué de cada pieza, en roles/runner_isolated.
+- name: Runner aislado para otra org (ARC, modo kubernetes)
+  hosts: k8s_control_plane
+  become: true
+  roles:
+    - {role: runner_isolated, tags: [runner]}
