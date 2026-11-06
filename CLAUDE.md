@@ -248,7 +248,12 @@ el módulo de Rust o el paquete de Go del guardián; la misma «una vez por
 sesión» que `cac-prompt`); cada vez que el agente escribe en cac, una línea
 para quien mira la terminal con qué tarea y qué cambió (`cac-wrote`, en
 `systemMessage`); y al parar no dejan irse sin
-escribir el handoff de la tarea que nombran los commits de la sesión. El mismo `settings.json` está en la
+escribir el handoff de la tarea que nombran los commits de la sesión (o, sin
+commits que la nombren, la que se tocó en ella). Para el resto de repos, el MCP
+los instala globales con `install_hooks` (scripts embebidos desde aquí, en
+`hooks_install.rs`); en este repo la copia global calla. **Si cambias un hook,
+sube `# cac-hooks vN` en `cac_hooks.py`**: es lo que hace que se ofrezca
+actualizar la copia global. El mismo `settings.json` está en la
 raíz, en `app/` y en `backend/` porque Claude Code sólo lee el de la carpeta
 donde se abre; los scripts buscan la raíz con git.
 

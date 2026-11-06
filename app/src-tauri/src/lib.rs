@@ -1,11 +1,13 @@
 // El catálogo de herramientas del MCP (`mcp::tool_defs`) es un solo `json!`, y
 // con las de etiquetas, responsables y fechas pasó el límite de 128 niveles de
 // macro que trae Rust. Subirlo es lo que pide el propio compilador; partir el
-// catálogo en trozos sólo movería el mismo JSON a más sitios.
-#![recursion_limit = "256"]
+// catálogo en trozos sólo movería el mismo JSON a más sitios. Con
+// `install_hooks` (5-nov-2026) pasó también de 256.
+#![recursion_limit = "512"]
 
 mod agent_install;
 mod host;
+mod hooks_install;
 mod ansible;
 mod secrets;
 mod op_env;

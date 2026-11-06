@@ -2443,6 +2443,16 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "install_hooks",
+            "description": "Install (or update) the cac hooks for Claude Code on this machine, for every repository: at start the project's map and what is in progress, a prompt that names a task or a server brings where it was left and what already bit there, editing a file brings the incidents its tests guard, each write to cac shows a line in the terminal, and stopping asks for the task's handoff. Writes the scripts shipped inside this cac app to hooks/cac/ in the Claude Code config folder and adds their entries to its settings.json, leaving every other hook as it is; installing twice changes nothing. Needs python3. ASK THE USER FIRST; call it only when they agreed. It takes effect in the next session. Needs no scope; it never touches cac.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "dryRun": { "type": "boolean", "description": "Report what would be written without writing it." }
+                }
+            }
+        },
+        {
             "name": "install_skill",
             "description": "Install (or update) the cac skills for Claude Code on this machine: cac-work (how to find a repository's place in cac, read its docs before starting, register the work as a task, record decisions and keep it all up to date) and cac-consolidar (the weekly pass that proposes what to promote, record or retire). Writes two fixed files, skills/cac-work/SKILL.md and skills/cac-consolidar/SKILL.md in the Claude Code config folder, with the text shipped inside this cac app — nothing is downloaded. ASK THE USER FIRST; call it only when they agreed. It takes effect in the next session. Needs no scope; it never touches cac.",
             "inputSchema": {
@@ -5726,6 +5736,7 @@ fn handle(req: &Value, cfg: &Result<Cfg, String>) -> Option<Value> {
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": "cac", "version": env!("CARGO_PKG_VERSION") },
                 "instructions": instructions(skills_dir().as_deref().map(skill_state))
+                    + hooks_note(claude_config_dir().as_deref().map(crate::hooks_install::state))
             }),
         )),
         "ping" => Some(ok(id, json!({}))),
@@ -5762,7 +5773,7 @@ const TRAPS_SECTION: &str = "Trampas que ya han mordido";
 
 /// Tools that run entirely on this machine and never call cac, so they work
 /// with no token configured at all.
-const LOCAL_TOOLS: &[&str] = &["compress_image", "compress_pdf", "install_skill"];
+const LOCAL_TOOLS: &[&str] = &["compress_image", "compress_pdf", "install_skill", "install_hooks"];
 
 /// Cómo se nombra una tarea en un commit o una PR para que cac la enlace sola
 /// (`domain/task_refs.go`): el folio si es de un cliente (`acme-7`), y si no la
@@ -6283,10 +6294,34 @@ enum SkillState {
 /// Dónde busca Claude Code las skills de la persona: `CLAUDE_CONFIG_DIR` si
 /// está puesta (el MCP la hereda de Claude Code), y si no `~/.claude`.
 fn skills_dir() -> Option<std::path::PathBuf> {
-    let base = std::env::var_os("CLAUDE_CONFIG_DIR")
+    Some(claude_config_dir()?.join("skills"))
+}
+
+/// La carpeta de Claude Code de la persona (skills, hooks, settings.json).
+fn claude_config_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("CLAUDE_CONFIG_DIR")
         .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".claude")))?;
-    Some(base.join("skills"))
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".claude")))
+}
+
+/// Lo que se añade a las instrucciones cuando los hooks globales faltan o
+/// están viejos: ofrecerlos, preguntando. Son lo que hace que cac se lea y se
+/// escriba sin que nadie lo recuerde (command-and-control-317).
+fn hooks_note(state: Option<crate::hooks_install::HooksState>) -> &'static str {
+    use crate::hooks_install::HooksState;
+    match state {
+        Some(HooksState::Missing) => {
+            "\n\nThe cac hooks for Claude Code are not installed globally on this machine: with them every session \
+             starts with the project's map, a prompt that names a task brings where it was left, each write to cac \
+             shows in the terminal, and stopping asks for the handoff. At a natural pause, offer them to the user in \
+             one sentence; if they agree, call install_hooks. Do not install them without asking."
+        }
+        Some(HooksState::Outdated) => {
+            "\n\nThe cac hooks installed on this machine are older than the ones this cac app ships. At a natural \
+             pause, offer the user to update them in one sentence; if they agree, call install_hooks."
+        }
+        _ => "",
+    }
 }
 
 fn skill_state(dir: &std::path::Path) -> SkillState {
@@ -6397,6 +6432,12 @@ fn call_local_tool(name: &str, args: &Value) -> Result<Value, String> {
         "install_skill" => {
             let dir = skills_dir().ok_or("Could not find the Claude Code config folder (no HOME).")?;
             install_skill(&dir, arg_bool(args, "dryRun"))
+        }
+        // Igual que la skill: ficheros fijos con el texto que va en el
+        // binario, y sus entradas en el settings.json sin tocar las demás.
+        "install_hooks" => {
+            let dir = claude_config_dir().ok_or("Could not find the Claude Code config folder (no HOME).")?;
+            crate::hooks_install::install(&dir, arg_bool(args, "dryRun"))
         }
         // The only tool here that is not an HTTP call. The MCP server *is* the
         // app binary, so the compressor the image page uses is already linked
@@ -8329,6 +8370,22 @@ mod tests {
         assert_eq!(dry["wouldWrite"], "/tmp/a/informe-compressed.pdf");
         assert_eq!(dry["quality"], "ebook");
         assert!(call_local_tool("compress_pdf", &json!({ "path": "/x.pdf", "quality": "max" })).is_err());
+    }
+
+    /// Rotura que detecta: que instalar los hooks pida token, que no se
+    /// anuncie, que no pida preguntar antes, o que las instrucciones no los
+    /// ofrezcan cuando faltan (o los ofrezcan ya instalados).
+    #[test]
+    fn install_hooks_is_local_and_listed() {
+        use crate::hooks_install::HooksState;
+        assert!(LOCAL_TOOLS.contains(&"install_hooks"));
+        let defs = tool_defs();
+        assert!(tool(&defs, "install_hooks")["description"].as_str().unwrap().contains("ASK THE USER FIRST"));
+        assert!(hooks_note(Some(HooksState::Missing)).contains("call install_hooks"));
+        assert!(hooks_note(Some(HooksState::Missing)).contains("without asking"));
+        assert!(hooks_note(Some(HooksState::Outdated)).contains("call install_hooks"));
+        assert_eq!(hooks_note(Some(HooksState::Current)), "");
+        assert_eq!(hooks_note(None), "");
     }
 
     #[test]

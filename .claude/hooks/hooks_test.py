@@ -274,6 +274,52 @@ class Hooks(unittest.TestCase):
         r = run_hook("cac-handoff", {"cwd": self.repo, "stop_hook_active": False}, self.env)
         self.assertEqual(json.loads(r.stdout)["decision"], "block", "una en curso sin handoff sí se pide")
 
+    def stop_in_a_client_repo(self, task, session="h-1"):
+        """Un repo sin refs en los commits (el de un cliente): la sesión
+        arranca (cac-session apunta la hora) y luego para."""
+        repo = os.path.join(self.tmp.name, "cliente-" + session)
+        if not os.path.isdir(repo):
+            git_repo(repo, "chore: sin referencia")
+        run_hook("cac-session", {"cwd": repo, "session_id": session}, self.env)
+        ANSWERS["/api/v1/auth/me"] = (200, {"username": "ana"})
+        ANSWERS["/api/v1/context?repo=guz-studio%2Fcac&only=inProgress"] = (200, {"inProgress": [task]})
+        r = run_hook("cac-handoff", {"cwd": repo, "session_id": session, "stop_hook_active": False}, self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def test_stop_asks_the_handoff_of_a_task_touched_in_this_session_without_commits(self):
+        import datetime
+        now = datetime.datetime.now(datetime.timezone.utc)
+        iso = lambda d: d.isoformat().replace("+00:00", "Z")
+        later, before = iso(now + datetime.timedelta(minutes=5)), iso(now - datetime.timedelta(days=1))
+        task = {"ref": "cc-9", "title": "Agente A", "assignees": ["ana"], "updatedAt": later, "handoffAt": before}
+        out = json.loads(self.stop_in_a_client_repo(task))
+        self.assertEqual(out["decision"], "block")
+        self.assertIn("cc-9", out["reason"])
+        # Con el «dónde quedó» escrito en esta sesión, para.
+        self.assertEqual(self.stop_in_a_client_repo(dict(task, handoffAt=later), "h-2"), "")
+        # La de otra persona, o una que no se tocó en esta sesión, no la pide.
+        self.assertEqual(self.stop_in_a_client_repo(dict(task, assignees=["beto"]), "h-3"), "")
+        self.assertEqual(self.stop_in_a_client_repo(dict(task, updatedAt=before), "h-4"), "")
+
+    def test_a_global_copy_is_quiet_in_a_repo_that_brings_its_own(self):
+        import shutil
+        glob = os.path.join(self.tmp.name, "global-hooks")
+        if not os.path.isdir(glob):
+            os.makedirs(glob)
+            for name in ("cac_hooks.py", "cac-wrote"):
+                shutil.copy(os.path.join(HERE, name), glob)
+        call = {"hook_event_name": "PostToolUse", "tool_name": "mcp__cac__remember", "tool_input": {"text": "x"}}
+        def run_global(cwd):
+            return subprocess.run([sys.executable, os.path.join(glob, "cac-wrote")], input=json.dumps(dict(call, cwd=cwd)),
+                                  capture_output=True, text=True, env=self.env, timeout=30).stdout
+        self.assertIn("cac ✓", run_global(self.repo), "en un repo sin hooks propios, la global calla")
+        own = os.path.join(self.tmp.name, "con-hooks")
+        git_repo(own, "chore: x")
+        os.makedirs(os.path.join(own, ".claude", "hooks"))
+        shutil.copy(os.path.join(HERE, "cac-wrote"), os.path.join(own, ".claude", "hooks"))
+        self.assertEqual(run_global(own), "", "la global habla en un repo que trae la suya: saldría dos veces")
+
     def test_stop_passes_when_no_recent_commit_names_a_task(self):
         other = os.path.join(self.tmp.name, "sinref")
         git_repo(other, "docs: sin tarea PROTEUS-12")

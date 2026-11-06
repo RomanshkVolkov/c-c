@@ -11,7 +11,17 @@ lee el de la carpeta donde se abre.
 
 Nunca imprimen el token ni rompen la sesión: ante cualquier fallo (sin remote,
 sin token, cac caído, repo no atado) callan y devuelven 0.
+
+Desde el 5-nov-2026 también se instalan **globales** con `install_hooks` del
+MCP (command-and-control-317): copiados en `$CLAUDE_CONFIG_DIR/hooks/cac/` y
+enlazados en el `settings.json` de la persona, para que corran en todos sus
+repos. En un repo que trae los suyos (éste), la copia global calla
+(`shadowed`): si no, cada hook correría dos veces.
+
+La versión de abajo se sube a mano al cambiar cualquier hook: es lo que hace
+que el MCP ofrezca actualizar la copia global.
 """
+# cac-hooks v1
 import json
 import os
 import re
@@ -83,6 +93,58 @@ def read_input():
         return json.load(sys.stdin)
     except ValueError:
         return {}
+
+
+def shadowed(inp, script=None):
+    """Si el repo donde se trabaja trae su propia copia de este hook (como
+    cac) y ésta no es esa copia: entonces calla, y habla la del repo."""
+    script = os.path.realpath(script or sys.argv[0])
+    root = git(inp.get("cwd") or os.getcwd(), "rev-parse", "--show-toplevel")
+    if not root:
+        return False
+    own = os.path.join(root, ".claude", "hooks", os.path.basename(script))
+    return os.path.exists(own) and os.path.realpath(own) != script
+
+
+# ── Cuándo empezó la sesión ──
+#
+# `cac-session` lo apunta la primera vez que corre en una sesión; `cac-handoff`
+# lo usa para saber qué tareas se tocaron en ella.
+
+def _start_path(session):
+    safe = re.sub(r"[^A-Za-z0-9_-]", "", session or "")[:80]
+    return os.path.join(cache_dir(), f"start-{safe}.json") if safe else ""
+
+
+def mark_session_start(session, now=None):
+    path = _start_path(session)
+    if not path or os.path.exists(path):
+        return
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"at": now if now is not None else time.time()}, f)
+    except OSError:
+        pass
+
+
+def session_start(session):
+    path = _start_path(session)
+    try:
+        with open(path, encoding="utf-8") as f:
+            return float(json.load(f)["at"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def parse_instant(s):
+    """Un instante RFC 3339 de cac (`2026-11-05T21:33:00.123Z`) en segundos."""
+    from datetime import datetime
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
 
 
 # ── Los incidentes, cacheados, y lo ya enseñado en cada sesión ──

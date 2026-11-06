@@ -2,6 +2,11 @@
 """Stop: si en esta sesión hubo commits que nombran una tarea y la tarea no
 tiene un «dónde quedó» posterior al último de ellos, Claude no para: escribe
 el handoff primero. Una vez (`stop_hook_active` corta el bucle).
+
+Y sin commits que la nombren —el repo de un cliente, donde el commit no lleva
+la ref (command-and-control-317)—: una tarea en curso del espacio del repo,
+de quien trabaja, que se tocó en esta sesión y cuyo «dónde quedó» es de antes
+de que empezara. La hora de inicio la apunta `cac-session`.
 """
 import json
 import os
@@ -9,7 +14,16 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cac_hooks import api, cac_config, git, read_input, repo_of  # noqa: E402
+from cac_hooks import (  # noqa: E402
+    api,
+    cac_config,
+    git,
+    parse_instant,
+    read_input,
+    repo_of,
+    session_start,
+    shadowed,
+)
 
 REF = re.compile(r"\(([a-z][a-z0-9-]*-\d+)\)\s*$")
 WINDOW = "12 hours ago"
@@ -54,23 +68,52 @@ def pending(cfg, refs):
     return out
 
 
+def touched_without_handoff(cfg, repo, started, skip):
+    """Las tareas en curso del espacio, de quien trabaja, tocadas desde
+    `started` y con el «dónde quedó» de antes (o sin él). Sin caché: al parar
+    hace falta lo de ahora."""
+    me = (api(cfg, "/api/v1/auth/me") or {}).get("username") or ""
+    data = api(cfg, "/api/v1/context?repo=" + repo.replace("/", "%2F") + "&only=inProgress")
+    if not me or not data:
+        return []
+    out = []
+    for t in data.get("inProgress") or []:
+        ref = t.get("ref") or ""
+        if ref in skip or me not in (t.get("assignees") or []):
+            continue
+        updated = parse_instant(t.get("updatedAt"))
+        handoff = parse_instant(t.get("handoffAt"))
+        if updated is None or updated < started:
+            continue
+        if handoff is None or handoff < started:
+            out.append((ref, t.get("title", "")))
+        if len(out) >= MAX_REFS:
+            break
+    return out
+
+
 def main():
     inp = read_input()
-    if inp.get("stop_hook_active"):
+    if inp.get("stop_hook_active") or shadowed(inp):
         return
     root, repo = repo_of(inp.get("cwd") or os.getcwd())
     if not root:
         return
     refs = recent_refs(root)
-    if not refs:
+    started = session_start(inp.get("session_id") or "")
+    if not refs and (started is None or not repo):
         return
     cfg = cac_config()
     if not cfg:
         return
-    missing = pending(cfg, refs)
-    if not missing:
+    missing = pending(cfg, refs) if refs else []
+    parts = [f"{ref} (último commit {sha}: {subject[:60]})" for ref, sha, subject in missing]
+    if started is not None and repo:
+        touched = touched_without_handoff(cfg, repo, started, set(refs))
+        parts += [f"{ref} («{title[:60]}», tocada en esta sesión)" for ref, title in touched]
+    if not parts:
         return
-    what = "; ".join(f"{ref} (último commit {sha}: {subject[:60]})" for ref, sha, subject in missing)
+    what = "; ".join(parts)
     print(json.dumps({
         "decision": "block",
         "reason": "Antes de parar, escribe el «dónde quedó» de " + what

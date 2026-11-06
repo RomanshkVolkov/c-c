@@ -22,7 +22,17 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cac_hooks import cac_config, fold, in_progress, incidents, load_seen, read_input, repo_of, save_seen  # noqa: E402
+from cac_hooks import (  # noqa: E402
+    cac_config,
+    fold,
+    in_progress,
+    incidents,
+    load_seen,
+    read_input,
+    repo_of,
+    save_seen,
+    shadowed,
+)
 
 MAX_LINES = 8
 # Un nombre de dos letras («ui», «db») casaría con medio idioma.
@@ -106,7 +116,7 @@ def task_lines_for(prompt, tasks, seen):
 def main():
     inp = read_input()
     prompt = inp.get("prompt") or ""
-    if not prompt.strip():
+    if not prompt.strip() or shadowed(inp):
         return
     cfg = cac_config()
     if not cfg:
