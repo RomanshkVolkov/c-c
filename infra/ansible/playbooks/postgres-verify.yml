@@ -8,7 +8,7 @@
   tasks:
     - name: Rutas bajo el home del usuario de operación
       ansible.builtin.set_fact:
-        pg_backup_dir: "{{ postgres_backup_dir | regex_replace('^~', ansible_env.HOME) }}"
+        pg_backup_dir: "{{ postgres_backup_dir | regex_replace('^~', ansible_facts['env']['HOME']) }}"
 
     - name: Postgres en 1/1
       ansible.builtin.command: docker service ls --filter name={{ postgres_stack }}_postgres --format {% raw %}'{{.Replicas}}'{% endraw %}

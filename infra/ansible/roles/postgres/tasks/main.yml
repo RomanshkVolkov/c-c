@@ -10,10 +10,10 @@
 # ni por el fichero del stack: entran por stdin a psql.
 - name: Rutas bajo el home del usuario de operación
   ansible.builtin.set_fact:
-    pg_conf_dir: "{{ ansible_env.HOME }}/.config/cac"
-    pg_hmac_key: "{{ ansible_env.HOME }}/.config/cac/secret-hmac.key"
-    pg_backup_dir: "{{ postgres_backup_dir | regex_replace('^~', ansible_env.HOME) }}"
-    pg_backup_bin: "{{ ansible_env.HOME }}/.local/bin/{{ postgres_stack }}-backup"
+    pg_conf_dir: "{{ ansible_facts['env']['HOME'] }}/.config/cac"
+    pg_hmac_key: "{{ ansible_facts['env']['HOME'] }}/.config/cac/secret-hmac.key"
+    pg_backup_dir: "{{ postgres_backup_dir | regex_replace('^~', ansible_facts['env']['HOME']) }}"
+    pg_backup_bin: "{{ ansible_facts['env']['HOME'] }}/.local/bin/{{ postgres_stack }}-backup"
 
 - name: Directorios de cac y del script
   ansible.builtin.file:
@@ -22,7 +22,7 @@
     mode: "0700"
   loop:
     - "{{ pg_conf_dir }}"
-    - "{{ ansible_env.HOME }}/.local/bin"
+    - "{{ ansible_facts['env']['HOME'] }}/.local/bin"
 
 - name: Clave del HMAC de versiones de secrets
   ansible.builtin.shell:
