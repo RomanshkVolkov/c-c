@@ -370,7 +370,7 @@ playbooks:
       - { name: runner_arc_version, description: "La del controlador que puso runner (ARC no admite mezclarlas).", default: "0.15.1" }
       - { name: runner_image, description: "La misma imagen que el runner de cac.", required: true }
       - { name: runner_isolated_name, description: "El nombre del scale set: lo que va en `runs-on`. Su namespace es arc-runners-<nombre>.", required: true }
-      - { name: runner_isolated_github_config_url, description: "La org de GitHub del cliente donde se registra.", required: true }
+      - { name: runner_isolated_github_config_url, description: "Dónde se registra: la org del cliente (https://github.com/<org>) o, si su cuenta es de usuario, el repo (https://github.com/<usuario>/<repo>; su App pide Administration read/write del repo).", required: true }
       - { name: runner_isolated_max, description: Cuántos jobs a la vez como mucho., default: 4 }
       - { name: runner_isolated_cpu, description: "CPU reservada como mucho entre todos sus pods (cuota).", default: "8" }
       - { name: runner_isolated_memory, description: "Memoria reservada como mucho entre todos sus pods (cuota).", default: 16Gi }
