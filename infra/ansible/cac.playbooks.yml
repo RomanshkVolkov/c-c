@@ -205,13 +205,14 @@ playbooks:
   - id: k8s-verify
     file: playbooks/k8s-verify.yml
     name: Verificar Kubernetes
-    description: Nodo, pods, Gateway, certificado y whoami por HTTPS. No cambia nada.
+    description: Nodo, pods, CRD de Gateway API, Gateway, certificado y whoami por HTTPS. No cambia nada.
     hosts: k8s_control_plane
     risk: read
     become: true
     become_password_from: OPS_PASSWORD
     vars:
       - { name: base_domain, required: true }
+      - { name: envoy_gateway_version, default: "v1.9.3" }
 
   - id: cnpg
     file: playbooks/cnpg-site.yml

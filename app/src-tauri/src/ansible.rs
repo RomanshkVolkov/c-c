@@ -2181,6 +2181,35 @@ playbooks:
         );
     }
 
+    // Helm no sube los CRD de un chart en un upgrade: gstd se quedó con los de
+    // Gateway API v1.4.1 bajo Envoy Gateway v1.9.3, que no vigila TCPRoute, y
+    // el TURN no se enganchaba sin ningún error (5-nov-2026). Roturas que
+    // atrapa: quitar la aplicación de los CRD del chart, aplicarlos sin
+    // `--server-side` (no caben en la anotación last-applied), no reiniciar
+    // el controlador, una verificación que no los compara, o que su versión
+    // de Envoy Gateway se separe de la de `k8s`.
+    #[test]
+    fn the_gateway_api_crds_follow_the_envoy_gateway_chart() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let addons = std::fs::read_to_string(root.join("roles/k8s_addons/tasks/main.yml")).unwrap();
+        let tasks = ansible_tasks(&addons);
+        let shell = |t: &serde_yaml::Value| {
+            t.get("ansible.builtin.shell").map(|s| serde_yaml::to_string(s).unwrap()).unwrap_or_default()
+        };
+        let apply = tasks.iter().map(shell).find(|c| c.contains("helm show crds")
+            && c.contains("kubectl apply")).expect("los CRD del chart no se aplican");
+        assert!(apply.contains("--server-side"), "{apply}");
+        assert!(tasks.iter().map(shell).any(|c| c.contains("rollout restart deploy/envoy-gateway")),
+            "el controlador no se reinicia: sólo mira los tipos al arrancar");
+        let verify = std::fs::read_to_string(root.join("playbooks/k8s-verify.yml")).unwrap();
+        assert!(verify.contains("helm show crds") && verify.contains("bundle-version"), "la verificación no compara los CRD");
+        let m = parse_manifest(&std::fs::read_to_string(root.join(MANIFEST_FILE)).unwrap()).unwrap();
+        let version = |id: &str| m.playbooks.iter().find(|p| p.id == id).unwrap()
+            .vars.iter().find(|v| v.name == "envoy_gateway_version").and_then(|v| v.default.clone());
+        assert!(version("k8s").is_some());
+        assert_eq!(version("k8s"), version("k8s-verify"), "k8s y su verificación hablan de otro Envoy Gateway");
+    }
+
     // v2: sin inventario y sin referencias. Roturas que atrapa: aceptar un
     // op:// en el manifiesto; un default en un secreto; become_password_ref en
     // v2; un nombre de secreto en minúsculas.

@@ -102,6 +102,50 @@
     wait: true
     timeout: 10m
 
+# Helm instala los CRD de un chart la primera vez y **nunca más**: en un
+# upgrade se quedan los viejos. gstd subió a Envoy Gateway v1.9.3 con los de
+# Gateway API v1.4.1 de la primera instalación, y la 1.9.3 no los reconoce:
+# «TCPRoute CRD not found, skipping TCPRoute watch» (también TLSRoute y
+# UDPRoute). La TCPRoute del TURN de LiveKit no se enganchaba al listener
+# `turn-tls` y ni tenía estado (gstd, 5-nov-2026, al mudar cac). Así que los
+# del chart se aplican en cada pasada en que no coinciden, y el controlador se
+# reinicia para que vuelva a mirar qué tipos vigila: sólo lo hace al arrancar.
+- name: Gateway API de los CRD instalados y del chart de Envoy Gateway
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      want=$(helm show crds oci://docker.io/envoyproxy/gateway-helm --version {{ envoy_gateway_version }} \
+        | grep -m1 'gateway.networking.k8s.io/bundle-version:' | awk '{print $2}')
+      have=$(kubectl get crd tcproutes.gateway.networking.k8s.io \
+        -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}' 2>/dev/null || true)
+      echo "${want:-?} ${have:-none}"
+    executable: /bin/bash
+  register: gateway_api_crds
+  changed_when: false
+  check_mode: false
+
+- name: Los CRD de Gateway API pasan a los del chart
+  ansible.builtin.debug:
+    msg: "Gateway API {{ gateway_api_crds.stdout.split()[1] }} → {{ gateway_api_crds.stdout.split()[0] }}"
+  changed_when: true
+  when: gateway_api_crds.stdout.split()[0] != gateway_api_crds.stdout.split()[1]
+
+- name: Aplicar los CRD del chart de Envoy Gateway
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      helm show crds oci://docker.io/envoyproxy/gateway-helm --version {{ envoy_gateway_version }}
+      | kubectl apply --server-side --force-conflicts -f -
+    executable: /bin/bash
+  when: gateway_api_crds.stdout.split()[0] != gateway_api_crds.stdout.split()[1]
+
+- name: El controlador de Envoy Gateway vuelve a mirar qué tipos vigila
+  ansible.builtin.shell:
+    cmd: >-
+      kubectl -n envoy-gateway-system rollout restart deploy/envoy-gateway &&
+      kubectl -n envoy-gateway-system rollout status deploy/envoy-gateway --timeout=180s
+  when: gateway_api_crds.stdout.split()[0] != gateway_api_crds.stdout.split()[1]
+
 - name: cert-manager {{ cert_manager_version }}
   kubernetes.core.helm:
     name: cert-manager

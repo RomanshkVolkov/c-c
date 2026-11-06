@@ -23,6 +23,23 @@
       check_mode: false
       failed_when: bad_pods.stdout | length > 0
 
+    # Los CRD de Gateway API tienen que ser los del chart de Envoy Gateway:
+    # con unos viejos el controlador no vigila TCPRoute y el TURN no se
+    # engancha, sin ningún error (gstd, 5-nov-2026).
+    - name: Los CRD de Gateway API son los del chart de Envoy Gateway
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          want=$(helm show crds oci://docker.io/envoyproxy/gateway-helm --version {{ envoy_gateway_version }} \
+            | grep -m1 'gateway.networking.k8s.io/bundle-version:' | awk '{print $2}')
+          have=$(kubectl get crd tcproutes.gateway.networking.k8s.io \
+            -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}')
+          echo "chart=$want instalados=$have"
+          [ -n "$want" ] && [ "$want" = "$have" ]
+        executable: /bin/bash
+      changed_when: false
+      check_mode: false
+
     - name: Gateway programado con la IP pública
       ansible.builtin.command: >-
         kubectl -n default wait gateway/gateway-api --for=condition=Programmed --timeout=120s
