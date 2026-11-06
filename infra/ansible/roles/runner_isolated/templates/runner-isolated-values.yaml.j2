@@ -37,5 +37,7 @@ template:
           - name: ACTIONS_RUNNER_REQUIRE_JOB_CONTAINER
             value: "false"
         resources:
-          requests: {cpu: "1", memory: 2Gi}
+          # Reserva, no tope: si la CPU está libre la usa entera. Lo que se
+          # reserva aquí se le quita a cac para desplegar (gstd: 12 CPU).
+          requests: {cpu: 500m, memory: 2Gi}
           limits: {memory: 6Gi}
