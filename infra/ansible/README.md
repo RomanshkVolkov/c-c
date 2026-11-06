@@ -17,7 +17,11 @@ Playbooks para dejar un servidor listo desde cero, por etapas:
    el bus de cac-service, imagen oficial fijada por digest, contraseña desde
    1Password, AOF en un PVC, sin Sentinel) y el **runner de GitHub Actions**
    (`runner`: ARC con un scale set registrado por una GitHub App, un pod por
-   job; la imagen y el uso están en `g-studio-labs/actions-runner`).
+   job; la imagen y el uso están en `g-studio-labs/actions-runner`). Y encima de
+   **Swarm**, **Postgres como servicio** (`postgres`: el de Salud en Casa en
+   latinet; un contenedor con volumen propio y sin puerto publicado en la red
+   overlay del API, superusuario por secret, un rol dueño para las migraciones
+   y un rol de la app por base, y `pg_dumpall` diario a disco).
 
 Los dos emiten un certificado wildcard `*.<base_domain>` por reto DNS en
 Cloudflare, y dejan un `whoami.<base_domain>` como prueba de humo. En

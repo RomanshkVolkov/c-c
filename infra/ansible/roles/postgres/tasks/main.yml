@@ -1,0 +1,191 @@
+---
+# Postgres como servicio Swarm. El mismo patrón que roles/traefik: el secret
+# va versionado por un HMAC de su valor (así rotar es crear otro y
+# redesplegar), la definición del stack se escribe en /etc/cac y se despliega
+# con `docker stack deploy`. Las contraseñas de los roles no pasan por la
+# línea de comandos ni por un fichero del stack: entran por stdin a psql.
+
+# Lo de roles/base que hace falta aquí (sin su firewall: este playbook no abre
+# ningún puerto, y cac marca en rojo lo que toque el firewall fuera de
+# baseline).
+- name: Directorio de cac en el servidor
+  ansible.builtin.file:
+    path: /etc/cac
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Clave del HMAC de versiones de secrets
+  ansible.builtin.shell:
+    cmd: umask 077 && head -c 32 /dev/urandom > {{ secret_hmac_key_path | quote }}
+    creates: "{{ secret_hmac_key_path }}"
+
+- name: Versión de la contraseña del superusuario
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import hashlib, hmac, sys
+        clave = open(sys.argv[1], "rb").read()
+        dato = b"postgres\0superuser\0" + sys.stdin.buffer.read()
+        print(hmac.new(clave, dato, hashlib.sha256).hexdigest()[:16])
+      - "{{ secret_hmac_key_path }}"
+    stdin: "{{ postgres_superuser_password }}"
+    stdin_add_newline: false
+  register: superuser_version
+  changed_when: false
+  no_log: true
+
+- name: Nombre del secret vigente
+  ansible.builtin.set_fact:
+    pg_superuser_secret: "{{ postgres_stack | replace('-', '_') }}_superuser_{{ superuser_version.stdout }}"
+
+- name: Secret con la contraseña del superusuario
+  community.docker.docker_secret:
+    name: "{{ pg_superuser_secret }}"
+    data: "{{ postgres_superuser_password }}"
+    labels:
+      cac.postgres_superuser: "{{ postgres_stack }}"
+    state: present
+  no_log: true
+
+# La red suele existir ya (el API la declara `external`). Si no, se crea
+# overlay y attachable, para que un `docker run --network` de migración o de
+# importación la vea.
+- name: ¿Existe la red?
+  ansible.builtin.command: docker network inspect {{ postgres_network | quote }} --format {% raw %}'{{.Driver}}'{% endraw %}
+  register: network_present
+  failed_when: false
+  changed_when: false
+
+- name: Red overlay para la base
+  community.docker.docker_network:
+    name: "{{ postgres_network }}"
+    driver: overlay
+    attachable: true
+    state: present
+  when: network_present.rc != 0
+
+- name: Definición del stack
+  ansible.builtin.template:
+    src: postgres.yml.j2
+    dest: "/etc/cac/{{ postgres_stack }}.yml"
+    mode: "0600"
+
+- name: Desplegar el stack
+  ansible.builtin.command: docker stack deploy --detach=true -c /etc/cac/{{ postgres_stack }}.yml {{ postgres_stack }}
+  register: postgres_deploy
+  changed_when: "'Updating' in postgres_deploy.stdout or 'Creating' in postgres_deploy.stdout"
+
+# En un ensayo no se despliega nada: no hay a quién esperar.
+- name: Postgres en 1/1
+  ansible.builtin.command: docker service ls --filter name={{ postgres_stack }}_postgres --format {% raw %}'{{.Replicas}}'{% endraw %}
+  register: replicas
+  until: replicas.stdout == "1/1"
+  retries: 36
+  delay: 5
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Contenedor de Postgres
+  ansible.builtin.shell:
+    cmd: docker ps -q -f name={{ postgres_stack }}_postgres | head -n1
+  register: pg_container
+  changed_when: false
+  when: not ansible_check_mode
+
+# El primer arranque hace initdb: unos segundos más después del 1/1.
+- name: Postgres contesta
+  ansible.builtin.command: docker exec {{ pg_container.stdout }} pg_isready -U postgres
+  register: ready
+  until: ready.rc == 0
+  retries: 24
+  delay: 5
+  changed_when: false
+  when: not ansible_check_mode
+
+# Roles y bases, idempotente, en cada corrida: lo que falte se crea (y psql
+# lo dice: CREATE ROLE / CREATE DATABASE), las contraseñas se ponen siempre
+# (rotar es cambiarlas en 1Password y volver a pedir este playbook). El dueño
+# corre las migraciones; los roles de la app sólo entran: lo que pueden tocar
+# se lo dan las migraciones (GRANT por tabla), no este playbook. Dentro del
+# contenedor psql entra por el socket local, que el oficial deja en trust.
+- name: Roles y bases
+  ansible.builtin.shell:
+    cmd: docker exec -i {{ pg_container.stdout }} psql -U postgres -v ON_ERROR_STOP=1 -q
+    stdin: |
+      SELECT format('CREATE ROLE %I LOGIN', r)
+        FROM (VALUES ('{{ postgres_owner }}'), ('{{ postgres_app_role }}'), ('{{ postgres_dev_app_role }}')) AS v(r)
+       WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v.r) \gexec
+      ALTER ROLE {{ postgres_owner }} PASSWORD '{{ postgres_owner_password | replace("'", "''") }}';
+      ALTER ROLE {{ postgres_app_role }} PASSWORD '{{ postgres_app_password | replace("'", "''") }}';
+      ALTER ROLE {{ postgres_dev_app_role }} PASSWORD '{{ postgres_dev_app_password | replace("'", "''") }}';
+      SELECT format('CREATE DATABASE %I OWNER %I', d, '{{ postgres_owner }}')
+        FROM (VALUES ('{{ postgres_database }}'), ('{{ postgres_dev_database }}')) AS v(d)
+       WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = v.d) \gexec
+      ALTER DATABASE {{ postgres_database }} OWNER TO {{ postgres_owner }};
+      ALTER DATABASE {{ postgres_dev_database }} OWNER TO {{ postgres_owner }};
+      REVOKE ALL ON DATABASE {{ postgres_database }} FROM PUBLIC;
+      REVOKE ALL ON DATABASE {{ postgres_dev_database }} FROM PUBLIC;
+      GRANT CONNECT ON DATABASE {{ postgres_database }} TO {{ postgres_app_role }};
+      GRANT CONNECT ON DATABASE {{ postgres_dev_database }} TO {{ postgres_dev_app_role }};
+  register: pg_setup
+  changed_when: "'CREATE ROLE' in pg_setup.stdout or 'CREATE DATABASE' in pg_setup.stdout"
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Directorio de respaldos
+  ansible.builtin.file:
+    path: "{{ postgres_backup_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Script de respaldo
+  ansible.builtin.template:
+    src: backup.sh.j2
+    dest: /usr/local/bin/{{ postgres_stack }}-backup
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Cron del respaldo diario
+  ansible.builtin.template:
+    src: backup.cron.j2
+    dest: /etc/cron.d/{{ postgres_stack }}-backup
+    owner: root
+    group: root
+    mode: "0644"
+
+# Uno al terminar, para que haya respaldo desde el primer día (y para que
+# postgres-verify tenga qué comprobar).
+- name: ¿Hay algún respaldo?
+  ansible.builtin.find:
+    paths: "{{ postgres_backup_dir }}"
+    patterns: "{{ postgres_stack }}-*.sql.gz"
+  register: backups
+  when: not ansible_check_mode
+
+- name: Primer respaldo
+  ansible.builtin.command: /usr/local/bin/{{ postgres_stack }}-backup
+  when: not ansible_check_mode and backups.matched == 0
+
+# Docker se niega a borrar un secret en uso: un fallo es «todavía
+# referenciado» y nunca deja a Postgres sin contraseña.
+- name: Versiones anteriores de la contraseña
+  ansible.builtin.shell:
+    cmd: >-
+      docker secret ls --filter label=cac.postgres_superuser={{ postgres_stack }} --format {% raw %}'{{.Name}}'{% endraw %}
+      | grep -vxF {{ pg_superuser_secret | quote }} || true
+  register: old_secrets
+  changed_when: false
+
+- name: Borrar versiones anteriores
+  ansible.builtin.command: docker secret rm {{ item }}
+  loop: "{{ old_secrets.stdout_lines }}"
+  register: removed
+  failed_when: false
+  changed_when: removed.rc == 0

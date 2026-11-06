@@ -1,0 +1,55 @@
+# {{ ansible_managed }}
+# Postgres para hah como servicio Swarm. Lo escribe Ansible (roles/postgres);
+# no se edita aquí. Sin `ports`: sólo se llega por la red {{ postgres_network }}
+# como {{ postgres_stack }}_postgres:5432.
+services:
+  postgres:
+    image: {{ postgres_image }}
+    networks: [{{ postgres_network }}]
+    environment:
+      POSTGRES_USER: postgres
+      # La contraseña la lee del secret: no queda en la definición del stack.
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    secrets: [postgres_password]
+    volumes:
+      # La imagen 18 guarda el clúster bajo /var/lib/postgresql/<versión>, no en
+      # /var/lib/postgresql/data como las anteriores: se monta el padre.
+      - {{ postgres_volume }}:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    stop_grace_period: 60s
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role==manager]
+      # Nunca dos a la vez sobre el mismo volumen: stop-first, y si el nuevo
+      # no arranca, vuelve el anterior.
+      update_config: {order: stop-first, failure_action: rollback, monitor: 30s}
+      rollback_config: {order: stop-first}
+      restart_policy: {condition: on-failure, delay: 5s}
+      resources:
+        limits: {memory: {{ postgres_memory_limit }}}
+      labels: ["traefik.enable=false"]
+
+networks:
+  {{ postgres_network }}:
+    external: true
+
+# Dentro del contenedor el fichero se llama postgres_password; fuera, el
+# secret lleva su versión. Rotar es crear otro y redesplegar.
+secrets:
+  postgres_password:
+    external: true
+    name: {{ pg_superuser_secret }}
+
+# Con `name` el volumen se llama así tal cual, sin el prefijo del stack: un
+# `docker volume ls` lo encuentra por su nombre.
+volumes:
+  {{ postgres_volume }}:
+    name: {{ postgres_volume }}

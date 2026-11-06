@@ -1,0 +1,96 @@
+---
+# Comprueba que el Postgres de hah está arriba, que no publica ningún puerto,
+# que las bases y los roles existen, que el rol de la app no puede crear
+# esquema y que hay un respaldo reciente. No cambia nada.
+- name: Verificar Postgres de hah
+  hosts: swarm
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Postgres en 1/1
+      ansible.builtin.command: docker service ls --filter name={{ postgres_stack }}_postgres --format {% raw %}'{{.Replicas}}'{% endraw %}
+      register: replicas
+      until: replicas.stdout == "1/1"
+      retries: 12
+      delay: 5
+      changed_when: false
+      check_mode: false
+
+    - name: No publica ningún puerto
+      ansible.builtin.command: docker service inspect {{ postgres_stack }}_postgres --format {% raw %}'{{json .Endpoint.Ports}}'{% endraw %}
+      register: ports
+      changed_when: false
+      check_mode: false
+      failed_when: ports.stdout != "null"
+
+    - name: Contenedor de Postgres
+      ansible.builtin.shell:
+        cmd: docker ps -q -f name={{ postgres_stack }}_postgres | head -n1
+      register: pg_container
+      changed_when: false
+      check_mode: false
+      failed_when: pg_container.stdout == ""
+
+    - name: Postgres contesta
+      ansible.builtin.command: docker exec {{ pg_container.stdout }} pg_isready -U postgres
+      changed_when: false
+      check_mode: false
+
+    - name: Las bases existen
+      ansible.builtin.command: docker exec {{ pg_container.stdout }} psql -U postgres -Atc "SELECT datname FROM pg_database"
+      register: databases
+      changed_when: false
+      check_mode: false
+      failed_when: postgres_database not in databases.stdout_lines or postgres_dev_database not in databases.stdout_lines
+
+    - name: Los roles existen
+      ansible.builtin.command: docker exec {{ pg_container.stdout }} psql -U postgres -Atc "SELECT rolname FROM pg_roles"
+      register: roles
+      changed_when: false
+      check_mode: false
+      failed_when: >-
+        postgres_owner not in roles.stdout_lines
+        or postgres_app_role not in roles.stdout_lines
+        or postgres_dev_app_role not in roles.stdout_lines
+
+    # El rol de la app sólo entra: crear una tabla tiene que fallar. Si un día
+    # pasa, alguien le dio más de lo que las migraciones le dan.
+    - name: El rol de la app no crea esquema
+      ansible.builtin.command: >-
+        docker exec {{ pg_container.stdout }} psql -U {{ postgres_app_role }} -d {{ postgres_database }}
+        -c "CREATE TABLE cac_probe_should_fail (x int)"
+      register: probe
+      changed_when: false
+      check_mode: false
+      failed_when: probe.rc == 0 or 'permission denied' not in probe.stderr
+
+    - name: El cron del respaldo existe
+      ansible.builtin.stat:
+        path: /etc/cron.d/{{ postgres_stack }}-backup
+      register: cron
+      check_mode: false
+      failed_when: not cron.stat.exists
+
+    # Uno de las últimas 36 horas y con contenido: el diario de ayer o el
+    # primero que deja el playbook.
+    - name: Hay un respaldo reciente
+      ansible.builtin.shell:
+        cmd: find {{ postgres_backup_dir | quote }} -name '{{ postgres_stack }}-*.sql.gz' -mmin -2160 -size +1k | wc -l
+      register: recent
+      changed_when: false
+      check_mode: false
+      failed_when: recent.stdout | int == 0
+
+    - name: Estado
+      ansible.builtin.shell:
+        cmd: >-
+          docker service ls --filter name={{ postgres_stack }} &&
+          docker exec {{ pg_container.stdout }} psql -U postgres -Atc "SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database WHERE NOT datistemplate" &&
+          ls -la {{ postgres_backup_dir | quote }}
+      register: state
+      changed_when: false
+      check_mode: false
+
+    - name: Resultado
+      ansible.builtin.debug:
+        var: state.stdout_lines

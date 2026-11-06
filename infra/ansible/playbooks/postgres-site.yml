@@ -1,0 +1,14 @@
+---
+# Postgres 18 para Salud en Casa (hah) como servicio Swarm, encima de un
+# servidor con Swarm (hecho por swarm-site o a mano, como latinet). Un solo
+# contenedor con volumen propio y sin puerto publicado: sólo lo ve quien está
+# en la red overlay `database`, que es donde ya corre el API. Lo que protege
+# es el respaldo diario a disco, no una réplica: dos Postgres sobre el mismo
+# volumen lo corrompen, y en un nodo una réplica no sobrevive a perder el
+# disco. Playbook aparte de `swarm` porque trae sus secretos (las contraseñas
+# del superusuario, del dueño y de los roles de la app). Idempotente.
+- name: Postgres para hah
+  hosts: swarm
+  become: true
+  roles:
+    - {role: postgres, tags: [postgres]}

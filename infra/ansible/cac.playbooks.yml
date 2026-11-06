@@ -302,6 +302,73 @@ playbooks:
     become: true
     become_password_from: OPS_PASSWORD
 
+  - id: postgres
+    file: playbooks/postgres-site.yml
+    name: "Postgres para hah (Swarm)"
+    description: >-
+      Encima de Swarm: Postgres 18 como un servicio con volumen propio y sin
+      puerto publicado, en la red overlay donde ya corre el API; el superusuario
+      por secret, un rol dueño (migraciones) y un rol de la app por base (sólo
+      entra; lo que toca se lo dan las migraciones), y pg_dumpall diario a
+      disco. Idempotente. Trae sus propios secretos.
+    hosts: swarm
+    risk: change
+    verify: postgres-verify
+    # Borrar un Postgres no se deshace con un playbook: se decide a mano, con
+    # un respaldo delante.
+    rollback: manual
+    become: true
+    become_password_from: OPS_PASSWORD
+    vars:
+      - { name: postgres_stack, description: El nombre del stack de Swarm (y del servicio, <stack>_postgres)., default: hah-postgres }
+      # Índice multiarquitectura de postgres:18.6-alpine, leído el 6-nov-2026.
+      - { name: postgres_image, description: Imagen oficial de Postgres fijada por digest., default: "postgres:18.6-alpine@sha256:123b17998ccaf47e53b502e8c6a1e79afd8f579c6f3eec83c563da026f957395" }
+      - { name: postgres_network, description: "La red overlay attachable por la que entra la app; se crea si no existe.", default: database }
+      - { name: postgres_volume, default: hah_postgres_data }
+      - { name: postgres_memory_limit, default: "1G" }
+      - { name: postgres_owner, description: "El rol dueño de las bases: corre las migraciones.", default: hah_owner }
+      - { name: postgres_database, description: La base de producción., default: hah }
+      - { name: postgres_app_role, description: "El rol con el que entra la app en producción: sólo lo que le den las migraciones.", default: hah_app }
+      - { name: postgres_dev_database, description: La base de desarrollo., default: hah_dev }
+      - { name: postgres_dev_app_role, default: hah_dev_app }
+      - { name: postgres_backup_dir, default: /var/backups/hah }
+      - { name: postgres_backup_retention_days, default: 14 }
+      - { name: postgres_backup_hour, description: La hora UTC del respaldo diario., default: 4 }
+      - { name: secret_hmac_key_path, default: /etc/cac/secret-hmac.key }
+      - name: postgres_superuser_password
+        description: La contraseña del superusuario postgres (generada en 1Password).
+        secret: true
+        from: HAH_PG_SUPERUSER_PASSWORD
+      - name: postgres_owner_password
+        description: La contraseña del rol dueño.
+        secret: true
+        from: HAH_PG_OWNER_PASSWORD
+      - name: postgres_app_password
+        description: La contraseña del rol de la app en producción.
+        secret: true
+        from: HAH_PG_APP_PASSWORD
+      - name: postgres_dev_app_password
+        description: La contraseña del rol de la app en desarrollo.
+        secret: true
+        from: HAH_PG_DEV_APP_PASSWORD
+
+  - id: postgres-verify
+    file: playbooks/postgres-verify.yml
+    name: Verificar Postgres de hah
+    description: En 1/1, sin puerto publicado, con sus bases y roles, el rol de la app sin crear esquema y un respaldo reciente. No cambia nada.
+    hosts: swarm
+    risk: read
+    become: true
+    become_password_from: OPS_PASSWORD
+    vars:
+      - { name: postgres_stack, default: hah-postgres }
+      - { name: postgres_database, default: hah }
+      - { name: postgres_dev_database, default: hah_dev }
+      - { name: postgres_owner, default: hah_owner }
+      - { name: postgres_app_role, default: hah_app }
+      - { name: postgres_dev_app_role, default: hah_dev_app }
+      - { name: postgres_backup_dir, default: /var/backups/hah }
+
   - id: runner
     file: playbooks/runner-site.yml
     name: Runner de GitHub Actions
