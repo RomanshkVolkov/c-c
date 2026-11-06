@@ -237,3 +237,110 @@ def go_test_index(root, pkg_dir):
         if m:
             out[m.group(1)] = path
     return out
+
+
+# ── Lo que un agente escribe en cac, en una línea para quien mira ──
+#
+# jose preguntaba «¿actualizaste cac?» con la escritura hecha un minuto
+# antes: la llamada sale plegada en la terminal y no se ve qué dejó. En las
+# tres sesiones de crossfire (30-oct → 5-nov), 12 de 16 recordatorios fueron
+# así (command-and-control-316). `cac-wrote` lo enseña con `systemMessage`,
+# que es para la persona, no para el modelo.
+
+MCP_PREFIX = "mcp__cac__"
+SHOWN_CHARS = 60
+
+
+def _short(text):
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= SHOWN_CHARS else text[: SHOWN_CHARS - 1] + "…"
+
+
+def _response_json(response):
+    """El JSON que devolvió la herramienta, venga como venga: un dict, un
+    texto con JSON, o la lista de bloques de un resultado de MCP."""
+    if isinstance(response, dict):
+        if "content" in response:
+            return _response_json(response["content"])
+        return response
+    if isinstance(response, list):
+        for block in response:
+            if isinstance(block, dict) and block.get("type") == "text":
+                got = _response_json(block.get("text"))
+                if got:
+                    return got
+        return {}
+    if isinstance(response, str):
+        try:
+            got = json.loads(response)
+        except ValueError:
+            return {}
+        return got if isinstance(got, dict) else {}
+    return {}
+
+
+def _task_changes(a):
+    parts = []
+    if a.get("claim"):
+        parts.append("tomada")
+    if a.get("status"):
+        parts.append("estado " + str(a["status"]))
+    if "handoff" in a:
+        parts.append("dónde quedó" if a["handoff"] else "dónde quedó borrado")
+    for key, label in (("description", "descripción"), ("title", "título"), ("blockedBy", "depende de"),
+                       ("assignees", "responsables"), ("priority", "prioridad"), ("dueAt", "fecha"),
+                       ("tags", "etiquetas"), ("visibility", "visibilidad " + str(a.get("visibility")))):
+        if key in a:
+            parts.append(label)
+    return ", ".join(parts) or "cambios"
+
+
+def describe_write(tool, args, response=None):
+    """La línea para una escritura en cac, o None si la herramienta sólo lee
+    (o era un ensayo). Sin llamar a cac: todo está en la llamada."""
+    if not tool.startswith(MCP_PREFIX):
+        return None
+    name = tool[len(MCP_PREFIX):]
+    a = args if isinstance(args, dict) else {}
+    if a.get("dryRun"):
+        return None
+    r = _response_json(response)
+    task = a.get("id") or ""
+    what = {
+        "update_task": lambda: f"{task} · {_task_changes(a)}",
+        "add_task_comment": lambda: f"{task} · comentario: {_short(a.get('body'))}",
+        "create_task": lambda: f"{r.get('ref') or 'tarea nueva'} · creada: {_short(a.get('title'))}"
+        + (f" (+{len(a['subtasks'])} subtareas)" if a.get("subtasks") else ""),
+        "link_pull_request": lambda: f"{task} · PR enlazada {a.get('url', '')}",
+        "add_task_attachment": lambda: f"{task} · adjunto {a.get('fileName') or os.path.basename(str(a.get('path') or a.get('url') or ''))}",
+        "record_decision": lambda: f"decisión: {_short(a.get('title'))}",
+        "link_decision": lambda: f"decisión {a.get('id', '')} enlazada",
+        "record_incident": lambda: f"incidente: {_short(a.get('title'))}",
+        "update_incident": lambda: f"incidente {a.get('id', '')} · " + (f"estado {a['status']}" if a.get("status") else "actualizado"),
+        "remember": lambda: f"nota: {_short(a.get('text'))}",
+        "create_doc_page": lambda: f"página nueva: {_short(a.get('title'))}",
+        "write_doc_page": lambda: f"página reescrita: {_short(a.get('title') or a.get('pageId'))}",
+        "write_doc_page_section": lambda: f"sección «{_short(a.get('renameTo') or a.get('section'))}» de una página",
+        "append_doc_page": lambda: f"página ampliada: {_short(a.get('text'))}",
+        "write_doc_section": lambda: f"sección «{_short(a.get('renameTo') or a.get('section'))}» de {a.get('tab', 'un doc')}",
+        "write_doc_tab": lambda: f"pestaña {a.get('tab', '')} reescrita",
+        "append_doc_tab": lambda: f"{a.get('tab', 'doc')} ampliado: {_short(a.get('text'))}",
+        "move_doc_page": lambda: "página movida",
+        "delete_doc_page": lambda: "página borrada",
+        "request_doc_review": lambda: "revisión de doc pedida",
+        "create_note": lambda: f"nota nueva: {_short(a.get('title'))}",
+        "update_note": lambda: f"nota {_short(a.get('title') or a.get('id'))} actualizada",
+        "add_note_attachment": lambda: "adjunto en una nota",
+        "send_message": lambda: f"mensaje a {a.get('channel') or a.get('person') or '?'}: {_short(a.get('text'))}",
+        "create_post": lambda: f"publicación (borrador): {_short(a.get('title'))}",
+        "comment_post": lambda: "comentario en el muro",
+        "update_report": lambda: f"reporte {task} · " + (f"estado {a['status']}" if a.get("status") else "actualizado"),
+        "add_report_comment": lambda: f"reporte {task} · comentario: {_short(a.get('body'))}",
+        "create_task_list": lambda: f"lista nueva: {_short(a.get('name'))}",
+        "create_task_folder": lambda: f"carpeta nueva: {_short(a.get('name'))}",
+        "create_task_space": lambda: f"espacio nuevo: {_short(a.get('name'))}",
+        "set_server_config": lambda: "configuración de servidor",
+        "set_secret_refs": lambda: "referencias de secretos",
+        "request_provisioning": lambda: f"aprovisionamiento pedido: {a.get('playbook', '')}",
+    }.get(name)
+    return ("cac ✓ " + what()) if what else None

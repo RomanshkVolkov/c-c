@@ -287,6 +287,67 @@ class Hooks(unittest.TestCase):
         self.assertEqual((r.returncode, r.stdout), (0, ""))
 
 
+class Wrote(unittest.TestCase):
+    """`cac-wrote`: lo que el agente escribe en cac, en una línea para quien
+    mira la terminal (command-and-control-316). Roturas que atrapa: callar
+    ante una escritura, hablar ante una lectura o un ensayo, mandarlo en
+    texto plano (no lo ve la persona) o como contexto del modelo, perder la
+    tarea o lo que cambió, y no sacar la ref de una tarea nueva de la
+    respuesta del MCP."""
+
+    def run_wrote(self, tool, args, response=None):
+        payload = {"hook_event_name": "PostToolUse", "tool_name": tool, "tool_input": args}
+        if response is not None:
+            payload["tool_response"] = response
+        return run_hook("cac-wrote", payload, dict(os.environ)).stdout.strip()
+
+    def test_a_write_leaves_a_visible_line_with_the_task_and_what_changed(self):
+        out = self.run_wrote("mcp__cac__update_task", {"id": "proteus-122", "status": "done", "handoff": "Hecho: …"})
+        got = json.loads(out)
+        self.assertEqual(list(got), ["systemMessage"])
+        self.assertIn("proteus-122", got["systemMessage"])
+        self.assertIn("estado done", got["systemMessage"])
+        self.assertIn("dónde quedó", got["systemMessage"])
+
+    def test_a_new_task_says_its_ref_from_the_answer(self):
+        answer = [{"type": "text", "text": json.dumps({"id": "x", "ref": "proteus-301", "title": "t"})}]
+        out = json.loads(self.run_wrote("mcp__cac__create_task", {"listId": "l", "title": "Agente A"}, answer))
+        self.assertIn("proteus-301", out["systemMessage"])
+
+    def test_a_read_or_a_dry_run_says_nothing(self):
+        self.assertEqual(self.run_wrote("mcp__cac__get_task", {"id": "proteus-7"}), "")
+        self.assertEqual(self.run_wrote("mcp__cac__search", {"query": "agente"}), "")
+        self.assertEqual(self.run_wrote("mcp__cac__update_task", {"id": "proteus-7", "status": "done", "dryRun": True}), "")
+        self.assertEqual(self.run_wrote("mcp__claude_ai_Atlassian_MCP__editJiraIssue", {"issueKey": "PROTEUS-7"}), "")
+        # Otro MCP con una herramienta del mismo nombre (ClickUp tiene
+        # `update_task`): no es cac, aunque el nombre corte igual.
+        self.assertEqual(self.run_wrote("mcp__cku__update_task", {"id": "86a1", "status": "done"}), "")
+
+    def test_a_decision_and_a_note_name_what_was_written(self):
+        self.assertIn("decisión: Hooks globales", json.loads(self.run_wrote(
+            "mcp__cac__record_decision", {"title": "Hooks globales", "body": "…"}))["systemMessage"])
+        self.assertIn("nota: crossfire@ es un alias", json.loads(self.run_wrote(
+            "mcp__cac__remember", {"text": "crossfire@ es un alias"}))["systemMessage"])
+
+
+    def test_the_three_settings_register_it_for_every_cac_tool(self):
+        # Sin el `.*`, Claude Code compara `mcp__cac` como texto exacto y no
+        # casa con ninguna herramienta: el hook no correría nunca, sin error.
+        import re
+        root = subprocess.run(["git", "-C", HERE, "rev-parse", "--show-toplevel"], capture_output=True, text=True).stdout.strip()
+        texts = []
+        for rel in (".claude/settings.json", "app/.claude/settings.json", "backend/.claude/settings.json"):
+            with open(os.path.join(root, rel), encoding="utf-8") as f:
+                texts.append(f.read())
+            hooks = json.loads(texts[-1])["hooks"]["PostToolUse"]
+            wrote = [e for e in hooks if any(h["command"].endswith('/.claude/hooks/cac-wrote"') for h in e["hooks"])]
+            self.assertEqual(len(wrote), 1, rel)
+            self.assertTrue(re.fullmatch(wrote[0]["matcher"], "mcp__cac__update_task"), rel)
+            self.assertFalse(re.fullmatch(wrote[0]["matcher"], "mcp__claude_ai_Atlassian_MCP__editJiraIssue"), rel)
+        self.assertEqual(texts[0], texts[1])
+        self.assertEqual(texts[0], texts[2])
+
+
 class Guards(unittest.TestCase):
     """El casado de un fichero con los guardianes, sin cac (cac_hooks.guards_for)."""
 

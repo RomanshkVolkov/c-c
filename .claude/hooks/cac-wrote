@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+"""PostToolUse (mcp__cac__.*): cada vez que un agente escribe en cac, una
+línea para la persona que mira la terminal: qué tarea y qué cambió
+(«cac ✓ proteus-122 · estado done, dónde quedó»). Va en `systemMessage`, que
+Claude Code enseña al usuario y no al modelo. Una lectura no dice nada.
+
+Sin llamar a cac: todo está en la llamada (`describe_write` en cac_hooks.py).
+Ante cualquier fallo, calla.
+"""
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from cac_hooks import describe_write, read_input  # noqa: E402
+
+
+def main():
+    inp = read_input()
+    try:
+        line = describe_write(inp.get("tool_name") or "", inp.get("tool_input") or {}, inp.get("tool_response"))
+    except Exception:  # noqa: BLE001 — un hook que revienta no puede romper la sesión
+        return
+    if line:
+        print(json.dumps({"systemMessage": line}, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

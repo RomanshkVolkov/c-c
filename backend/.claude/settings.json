@@ -13,6 +13,9 @@
     ],
     "PreToolUse": [
       {"matcher": "Edit|Write|MultiEdit", "hooks": [{"type": "command", "command": "\"$(git -C \"$CLAUDE_PROJECT_DIR\" rev-parse --show-toplevel)/.claude/hooks/cac-edit\"", "timeout": 5}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "mcp__cac__.*", "hooks": [{"type": "command", "command": "\"$(git -C \"$CLAUDE_PROJECT_DIR\" rev-parse --show-toplevel)/.claude/hooks/cac-wrote\"", "timeout": 5}]}
     ]
   }
 }

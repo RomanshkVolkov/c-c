@@ -245,7 +245,9 @@ un área que ya mordió (`gstd`, `cert-manager`…), le ponen delante esos
 incidentes, una vez por sesión (`cac-prompt`); al editar un fichero, los
 incidentes cuya prueba guardián vive ahí (`cac-edit`, por la ruta, el nombre,
 el módulo de Rust o el paquete de Go del guardián; la misma «una vez por
-sesión» que `cac-prompt`); y al parar no dejan irse sin
+sesión» que `cac-prompt`); cada vez que el agente escribe en cac, una línea
+para quien mira la terminal con qué tarea y qué cambió (`cac-wrote`, en
+`systemMessage`); y al parar no dejan irse sin
 escribir el handoff de la tarea que nombran los commits de la sesión. El mismo `settings.json` está en la
 raíz, en `app/` y en `backend/` porque Claude Code sólo lee el de la carpeta
 donde se abre; los scripts buscan la raíz con git.
