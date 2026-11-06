@@ -54,8 +54,12 @@ export default function Feedback() {
     }, { replace: true });
   }, [wanted, openPost, setParams]);
 
+  // El marco de la app tiene techo (`AppLayout`): cada pantalla desborda dentro
+  // de lo suyo. Sin este contenedor el muro se cortaba en el pliegue y no había
+  // scroll.
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-4 p-4 motion-page">
+    <div className="min-h-0 flex-1 overflow-auto">
+    <div className="mx-auto w-full max-w-2xl space-y-4 p-4">
       <header className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold">{t("common:feedback.title")}</h1>
@@ -103,6 +107,7 @@ export default function Feedback() {
         />
       )}
       {open && <PostModal />}
+    </div>
     </div>
   );
 }
