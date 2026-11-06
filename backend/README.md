@@ -107,7 +107,10 @@ The migration is auto-run on boot via GORM `AutoMigrate` in `repository/db.go`.
 
 `.github/workflows/backend.yml` triggers on push to `backend/**` or manual `workflow_dispatch`:
 
-1. `docker build` → push to `ghcr.io/g-studio-labs/c-c/backend:latest`
-2. SSH to k8s host → `kubectl create secret` (from GitHub repo secrets) → `kubectl apply -f k8s/` → `rollout status`
+1. `go test` against a real Postgres: red never ships.
+2. `docker build` → push to `ghcr.io/g-studio-labs/c-c/backend:latest`
+3. `deploy-gstd`, on the self-hosted runner `gstd` (org `g-studio-labs`, repo variable `GSTD_DEPLOY=true`): `k8s/deploy.sh` applies the manifests in the `cac` namespace of **gstd** and waits for the rollout. The runner can only touch that namespace.
 
-> **Operational note:** when you rotate the DB password, **also update the `DATABASE_URL` GitHub repo secret** before the next deploy. Otherwise the pod crash-loops on a dead credential and the API returns `503` upstream errors.
+Since 5-nov-2026 cac runs on gstd (it moved from pixel-vps; the old SSH `deploy` job is switched off with `PIXEL_VPS_DEPLOY=false`).
+
+**Secrets never go through GitHub.** They live in the 1Password item «cac prod» (Private vault) and the `cac-secrets` playbook (`infra/ansible`, asked for from the app: Servers → gstd → Provisioning) writes them into the cluster and restarts what already runs if they changed. To rotate one (e.g. the DB password): change it in 1Password, then run `cac-secrets`.

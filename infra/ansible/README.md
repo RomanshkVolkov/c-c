@@ -66,6 +66,11 @@ make k8s-down SERVER=gstd         # DESTRUCTIVO
 make run SERVER=gstd GRANT=<id>   # corre una petición autorizada, y después su verify
 ```
 
+**gstd es producción desde el 5-nov-2026**: corre cac (página «gstd ·
+Kubernetes de G Studio» en cac). Los ejemplos de arriba muestran la forma;
+en gstd ya no se piden `swarm`, `swarm-down` ni `k8s-down`. Se piden `k8s`,
+`cnpg`, `valkey`, `runner` y `cac-secrets` cuando cambia su config.
+
 **Ningún atajo aplica nada: pide** (decisión 4d28f4ab). Cada uno abre una
 petición en cac, corre el ensayo (`--check --diff`, que no cambia nada) y cac
 lo evalúa: un solo host, nada que toque SSH o el firewall fuera de `baseline`.
@@ -121,8 +126,8 @@ con un alias de tu `~/.ssh/config`.
   SSH, como pixel-vps.
 - **El mismo menor de Kubernetes que pixel-vps (1.35) y los addons en su
   última versión** (los defaults de `k8s` en `cac.playbooks.yml`, que pasan a
-  su plantilla): gstd va por delante y ensaya lo que después se sube en
-  pixel-vps. Cada addon soporta una lista cerrada de menores de k8s; la tabla
+  su plantilla). Una subida se ensaya en un servidor de pruebas antes que en
+  gstd, que ya es producción. Cada addon soporta una lista cerrada de menores de k8s; la tabla
   vive en la prueba `ansible::tests::every_addon_supports_the_kubernetes_minor`
   y una versión fuera de ella no compila la app. Diferencias a propósito: el
   pool de pods es `10.244.0.0/16` (el de pixel-vps, `10.0.0.0/8`, se solapa con
@@ -131,3 +136,11 @@ con un alias de tu `~/.ssh/config`.
 - **Los secrets de Swarm llevan su versión en el nombre** (HMAC del valor con
   una clave que sólo vive en el servidor, `/etc/cac/secret-hmac.key`): rotar el
   token es cambiarlo en 1Password y volver a correr `make swarm SERVER=…`.
+- **Subir Envoy Gateway no sube los CRD de Gateway API**: Helm instala los de
+  un chart la primera vez y nunca más. Con los viejos, el controlador no vigila
+  `TCPRoute` y el TURN de LiveKit no se engancha, sin ningún error (gstd,
+  5-nov-2026). El rol aplica los del chart cuando no coinciden y reinicia el
+  controlador, y `k8s-verify` lo comprueba
+  (`ansible::tests::the_gateway_api_crds_follow_the_envoy_gateway_chart`).
+- **Los UDP de LiveKit los abre `k8s`** (rol `base`, `firewall_udp_ports`), no
+  `baseline`.
