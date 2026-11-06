@@ -2,13 +2,13 @@
 # {{ ansible_managed }}
 # Respaldo de Postgres de hah: pg_dumpall (roles y todas las bases) a disco,
 # comprimido, y se borra lo más viejo que {{ postgres_backup_retention_days }}
-# días. Lo lanza cron ({{ "/etc/cron.d/" ~ postgres_stack ~ "-backup" }}) y
-# también se puede correr a mano. Se restaura con
+# días. Lo lanza el cron del usuario de operación y también se puede correr a
+# mano. Se restaura con
 #   gunzip -c <fichero> | docker exec -i <contenedor> psql -U postgres
 set -eu
 umask 077
 
-dir='{{ postgres_backup_dir }}'
+dir='{{ pg_backup_dir }}'
 ctr=$(docker ps -q -f name={{ postgres_stack }}_postgres | head -n1)
 if [ -z "$ctr" ]; then
   echo "{{ postgres_stack }}: no hay contenedor de postgres corriendo" >&2

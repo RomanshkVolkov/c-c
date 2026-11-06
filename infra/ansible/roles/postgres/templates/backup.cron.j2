@@ -1,6 +1,0 @@
-# {{ ansible_managed }}
-# Respaldo diario de Postgres de hah, a las {{ postgres_backup_hour }}:00 UTC.
-# flock evita dos a la vez si uno se alarga.
-SHELL=/bin/sh
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-0 {{ postgres_backup_hour }} * * * root flock -n /run/lock/{{ postgres_stack }}-backup.lock /usr/local/bin/{{ postgres_stack }}-backup >> /var/log/{{ postgres_stack }}-backup.log 2>&1

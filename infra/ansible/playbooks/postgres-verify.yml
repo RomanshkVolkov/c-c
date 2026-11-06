@@ -1,12 +1,15 @@
 ---
 # Comprueba que el Postgres de hah está arriba, que no publica ningún puerto,
 # que las bases y los roles existen, que el rol de la app no puede crear
-# esquema y que hay un respaldo reciente. No cambia nada.
+# esquema y que hay un respaldo reciente. No cambia nada. Sin root, como el
+# playbook postgres: el usuario de operación con el grupo docker.
 - name: Verificar Postgres de hah
   hosts: swarm
-  become: true
-  gather_facts: false
   tasks:
+    - name: Rutas bajo el home del usuario de operación
+      ansible.builtin.set_fact:
+        pg_backup_dir: "{{ postgres_backup_dir | regex_replace('^~', ansible_env.HOME) }}"
+
     - name: Postgres en 1/1
       ansible.builtin.command: docker service ls --filter name={{ postgres_stack }}_postgres --format {% raw %}'{{.Replicas}}'{% endraw %}
       register: replicas
@@ -65,17 +68,18 @@
       failed_when: probe.rc == 0 or 'permission denied' not in probe.stderr
 
     - name: El cron del respaldo existe
-      ansible.builtin.stat:
-        path: /etc/cron.d/{{ postgres_stack }}-backup
+      ansible.builtin.shell:
+        cmd: crontab -l | grep -c {{ postgres_stack | quote }}
       register: cron
+      changed_when: false
       check_mode: false
-      failed_when: not cron.stat.exists
+      failed_when: cron.stdout | int == 0
 
     # Uno de las últimas 36 horas y con contenido: el diario de ayer o el
     # primero que deja el playbook.
     - name: Hay un respaldo reciente
       ansible.builtin.shell:
-        cmd: find {{ postgres_backup_dir | quote }} -name '{{ postgres_stack }}-*.sql.gz' -mmin -2160 -size +1k | wc -l
+        cmd: find {{ pg_backup_dir | quote }} -name '{{ postgres_stack }}-*.sql.gz' -mmin -2160 -size +1k | wc -l
       register: recent
       changed_when: false
       check_mode: false
@@ -86,7 +90,7 @@
         cmd: >-
           docker service ls --filter name={{ postgres_stack }} &&
           docker exec {{ pg_container.stdout }} psql -U postgres -Atc "SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database WHERE NOT datistemplate" &&
-          ls -la {{ postgres_backup_dir | quote }}
+          ls -la {{ pg_backup_dir | quote }}
       register: state
       changed_when: false
       check_mode: false
