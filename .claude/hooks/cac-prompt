@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """UserPromptSubmit: si el prompt nombra un servidor o un área de los que ya
 han mordido (pixel-vps, gstd, cert-manager, k8s…), le pone delante al agente
-los títulos de esos incidentes, una vez por sesión cada uno.
+los títulos de esos incidentes, una vez por sesión cada uno. Y si nombra una
+tarea en curso del espacio del repo —por su ref (`proteus-7`) o por una clave
+de fuera de su descripción (`PROTEUS-224`)—, su «dónde quedó».
 
 Es lo que hace que cac sea memoria en el punto de acción y no sólo cuando
 alguien se acuerda de buscar: los dieciséis tropiezos del simulacro de gstd
@@ -20,7 +22,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cac_hooks import cac_config, fold, incidents, load_seen, read_input, save_seen  # noqa: E402
+from cac_hooks import cac_config, fold, in_progress, incidents, load_seen, read_input, repo_of, save_seen  # noqa: E402
 
 MAX_LINES = 8
 # Un nombre de dos letras («ui», «db») casaría con medio idioma.
@@ -61,6 +63,46 @@ def lines_for(prompt, found, seen):
     return out, [i.get("id") for i in hits[:MAX_LINES]]
 
 
+def names_ref(prompt, ref):
+    """Si el prompt nombra la referencia tal cual se escribe. Distingue
+    mayúsculas a propósito: `proteus-7` es la tarea 7 de cac y `PROTEUS-7`
+    el ticket 7 de Jira, que numera por su lado."""
+    return re.search(r"(?<![A-Za-z0-9-])" + re.escape(ref) + r"(?![0-9])", prompt) is not None
+
+
+def task_lines_for(prompt, tasks, seen):
+    """Las tareas en curso que el prompt nombra por su ref de cac o por una
+    clave de fuera de su descripción, con su «dónde quedó». Así no hace falta
+    que el agente se acuerde de buscar: jose preguntaba «¿en cac buscaste
+    algo?» llevando una hora con la tarea del agente A (5-nov-2026,
+    command-and-control-319)."""
+    out, shown = [], []
+    for t in tasks:
+        key = "task:" + str(t.get("id"))
+        if key in seen:
+            continue
+        ref = t.get("ref") or ""
+        named = [ref] if ref and names_ref(prompt, ref) else []
+        named += [k for k in t.get("keys") or [] if names_ref(prompt, k)]
+        if not named:
+            continue
+        line = f"- {ref} «{t.get('title', '')}»"
+        if named[0] != ref:
+            line = f"- {named[0]} → {ref} «{t.get('title', '')}»"
+        if t.get("handoff"):
+            first = t["handoff"].strip().splitlines()[0]
+            line += f" · dónde quedó: {first} ({t.get('handoffBy', '')}, {(t.get('handoffAt') or '')[:10]})"
+        else:
+            line += " · sin «dónde quedó»"
+        out.append(line + f" · get_task {ref}")
+        shown.append(key)
+        if len(out) == MAX_LINES:
+            break
+    if out:
+        out.insert(0, "cac · la tarea que nombras, en curso:")
+    return out, shown
+
+
 def main():
     inp = read_input()
     prompt = inp.get("prompt") or ""
@@ -69,12 +111,20 @@ def main():
     cfg = cac_config()
     if not cfg:
         return
-    found = incidents(cfg)
-    if not found:
-        return
     session = inp.get("session_id") or ""
     seen = load_seen(session)
-    out, shown = lines_for(prompt, found, seen)
+    out, shown = [], []
+    _, repo = repo_of(inp.get("cwd") or os.getcwd())
+    tasks = in_progress(cfg, repo)
+    if tasks:
+        lines, ids = task_lines_for(prompt, tasks, seen)
+        out += lines
+        shown += ids
+    found = incidents(cfg)
+    if found:
+        lines, ids = lines_for(prompt, found, seen)
+        out += lines
+        shown += ids
     if not out:
         return
     save_seen(session, seen | set(shown))

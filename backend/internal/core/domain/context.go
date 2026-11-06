@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"regexp"
+	"time"
+)
 
 // ─── El mapa de contexto de un espacio, para un agente ───────────────────────
 //
@@ -219,6 +222,36 @@ type ContextTask struct {
 	// Release). Es la tarea que la sesión cierra al poner el tablero al día;
 	// cac no la mueve (command-and-control-295).
 	Shipped *ReleaseRef `json:"shipped,omitempty"`
+	// Keys: las claves de fuera que la tarea nombra en su título o su
+	// descripción (`PROTEUS-224` de Jira, en la línea **Referencias**). Con
+	// ellas el hook `cac-prompt` trae su «dónde quedó» cuando el prompt nombra
+	// el ticket y no la tarea (command-and-control-319). Sólo en `InProgress`.
+	Keys []string `json:"keys,omitempty"`
+}
+
+// externalKey: una clave de tracker en mayúsculas, `PROTEUS-224`. Una ref de
+// cac (`proteus-12`) va en minúsculas y no casa: son números distintos.
+var externalKey = regexp.MustCompile(`\b[A-Z][A-Z0-9]{1,15}-[0-9]{1,7}\b`)
+
+// MaxExternalKeys: una descripción que pega un informe entero no infla el mapa.
+const MaxExternalKeys = 10
+
+// ExternalKeys: las claves de fuera de un texto, sin repetir y en orden.
+func ExternalKeys(texts ...string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, t := range texts {
+		for _, k := range externalKey.FindAllString(t, -1) {
+			if !seen[k] {
+				seen[k] = true
+				out = append(out, k)
+				if len(out) == MaxExternalKeys {
+					return out
+				}
+			}
+		}
+	}
+	return out
 }
 
 // Límites del mapa: lo que pasa de aquí se recorta y se dice en `Truncated`.

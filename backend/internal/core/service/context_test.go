@@ -150,7 +150,8 @@ func contextFixture(t *testing.T) *gorm.DB {
 	parent := "it-curso"
 	for _, it := range []domain.Item{
 		{OrgID: "org-1", SpaceID: "sp-1", ListID: "l-app", Seq: 7, Title: "En curso", Status: domain.ReportInProgress,
-			Handoff: "Falta la release", HandoffByID: "u-ana"},
+			Handoff: "Falta la release", HandoffByID: "u-ana",
+			Description: "**Referencias:** Jira PROTEUS-224 · https://x.atlassian.net/browse/PROTEUS-89 · otra vez PROTEUS-224 · cac proteus-12"},
 		{OrgID: "org-1", SpaceID: "sp-1", ListID: "l-app", Seq: 8, Title: "Pendiente", Status: domain.ReportPending},
 		{OrgID: "org-1", SpaceID: "sp-1", ListID: "l-app", Seq: 10, Title: "Libre", Status: domain.ReportPending},
 		{OrgID: "org-1", SpaceID: "sp-1", ListID: "l-app", Seq: 9, Title: "Subtarea", Status: domain.ReportInProgress, ParentID: &parent},
@@ -249,6 +250,11 @@ func TestTheContextMapIsTheSpaceWithoutBodies(t *testing.T) {
 	}
 	if curso.UpdatedAt.IsZero() {
 		t.Fatalf("sin fecha no se sabe si está vivo: %+v", curso)
+	}
+	// Las claves de Jira de la descripción, sin repetir: el prompt que nombra
+	// el ticket trae la tarea. `proteus-12` (cac, minúsculas) no es una.
+	if strings.Join(curso.Keys, ",") != "PROTEUS-224,PROTEUS-89" {
+		t.Fatalf("claves de fuera: %v", curso.Keys)
 	}
 	if len(m.Truncated) != 0 {
 		t.Fatalf("recortó sin pasarse: %v", m.Truncated)

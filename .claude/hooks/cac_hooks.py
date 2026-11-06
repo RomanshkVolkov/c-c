@@ -126,6 +126,36 @@ def incidents(cfg):
     return found
 
 
+# Las tareas en curso del espacio del repo cambian más que los incidentes.
+TASKS_TTL = 5 * 60
+
+
+def in_progress(cfg, repo):
+    """Las tareas en curso del espacio al que está atado `repo`, cacheadas por
+    repo: `ref`, título, handoff y las claves de fuera que nombran (`keys`,
+    p. ej. `PROTEUS-224`). Vacío si el repo no está atado o cac no contesta."""
+    if not repo:
+        return []
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", repo)
+    path = os.path.join(cache_dir(), f"tasks-{safe}.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            cached = json.load(f)
+        if time.time() - cached.get("at", 0) < TASKS_TTL:
+            return cached.get("tasks") or []
+    except (OSError, ValueError):
+        pass
+    data = api(cfg, "/api/v1/context?repo=" + repo.replace("/", "%2F") + "&only=inProgress")
+    if data is None:
+        return []
+    found = data.get("inProgress") or []
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"at": time.time(), "tasks": found}, f)
+    except OSError:
+        pass
+    return found
+
 
 def seen_path(session):
     safe = re.sub(r"[^A-Za-z0-9_-]", "", session or "")[:80] or "sin-sesion"

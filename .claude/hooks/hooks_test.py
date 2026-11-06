@@ -206,6 +206,44 @@ class Hooks(unittest.TestCase):
             json.dump(cached, f)
         self.assertIn("inc-2", self.prompt("gstd", session="s-5"), "no se refresca lo viejo")
 
+    TASKS = [
+        {"id": "t-7", "ref": "cc-7", "title": "Agente A · cotizaciones sin facturar", "keys": ["PROTEUS-224"],
+         "handoff": "Hecho: la regla.\nSiguiente: la tabla.", "handoffBy": "Jose", "handoffAt": "2026-11-05T21:33:00Z"},
+        {"id": "t-8", "ref": "cc-8", "title": "Sin handoff", "keys": []},
+    ]
+
+    def fresh_tasks(self, tasks):
+        self.fresh_vocabulary([])
+        ANSWERS["/api/v1/context?repo=guz-studio%2Fcac&only=inProgress"] = (200, {"inProgress": tasks})
+
+    def test_a_prompt_that_names_a_task_brings_where_it_was_left(self):
+        self.fresh_tasks(self.TASKS)
+        out = self.prompt("sigamos con cc-7 por favor", session="t-1")
+        self.assertIn("cc-7 «Agente A · cotizaciones sin facturar»", out)
+        self.assertIn("dónde quedó: Hecho: la regla. (Jose, 2026-11-05)", out)
+        self.assertIn("get_task cc-7", out)
+        self.assertNotIn("Siguiente", out, "más que la primera línea")
+        self.assertNotIn("cc-8", out)
+
+    def test_the_jira_key_of_a_task_brings_the_task(self):
+        self.fresh_tasks(self.TASKS)
+        out = self.prompt("revisa PROTEUS-224 que lo pidió Diego", session="t-2")
+        self.assertIn("PROTEUS-224 → cc-7", out)
+
+    def test_a_task_needs_its_exact_name_and_comes_once(self):
+        self.fresh_tasks(self.TASKS)
+        # `CC-7` sería otra numeración (Jira), `cc-70` otra tarea.
+        self.assertEqual(self.prompt("mira CC-7 y cc-70", session="t-3"), "")
+        self.assertIn("cc-7", self.prompt("cc-7", session="t-3"))
+        self.assertEqual(self.prompt("otra vez cc-7", session="t-3"), "", "se repite en la misma sesión")
+
+    def test_a_task_and_a_server_in_the_same_prompt_bring_both(self):
+        self.fresh_tasks(self.TASKS)
+        ANSWERS["/api/v1/incidents/"] = (200, {"incidents": self.INCIDENTS})
+        out = self.prompt("cc-7 se despliega en pixel-vps", session="t-4")
+        self.assertIn("get_task cc-7", out)
+        self.assertIn("get_incident inc-1", out)
+
     # ── cac-handoff ──
 
     def test_stop_is_blocked_until_the_task_named_by_a_commit_has_a_newer_handoff(self):

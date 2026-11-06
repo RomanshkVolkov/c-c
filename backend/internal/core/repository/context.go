@@ -124,28 +124,28 @@ func (r *ContextRepository) ChangedRepoDocs(orgID, spaceID string, since time.Ti
 // InProgress: las tareas en «en curso» de cualquier lista del espacio, sin
 // subtareas ni archivadas, lo más reciente primero. Uno más del límite.
 func (r *ContextRepository) InProgress(spaceID string, limit int) ([]domain.ContextTask, error) {
-	return r.tasks(r.db.Where("space_id = ? AND status = ?", spaceID, domain.ReportInProgress).Limit(limit+1), false)
+	return r.tasks(r.db.Where("space_id = ? AND status = ?", spaceID, domain.ReportInProgress).Limit(limit+1), false, true)
 }
 
 // ChangedTasks: las tareas del espacio tocadas desde `since` (estado, texto,
 // handoff…), con su estado, lo más reciente primero.
 func (r *ContextRepository) ChangedTasks(spaceID string, since time.Time, limit int) ([]domain.ContextTask, error) {
-	return r.tasks(r.db.Where("space_id = ? AND updated_at > ?", spaceID, since).Limit(limit+1), true)
+	return r.tasks(r.db.Where("space_id = ? AND updated_at > ?", spaceID, since).Limit(limit+1), true, false)
 }
 
 // tasks: lo que InProgress y ChangedTasks tienen en común: sin subtareas ni
 // archivadas, lo más reciente primero. Una fila propia: GORM no sabe leer en
 // un struct con un `[]string` (los responsables), que se rellenan después.
-func (r *ContextRepository) tasks(q *gorm.DB, withStatus bool) ([]domain.ContextTask, error) {
+func (r *ContextRepository) tasks(q *gorm.DB, withStatus, withKeys bool) ([]domain.ContextTask, error) {
 	type row struct {
-		ID, Title, ListID, ProjectID, Handoff, HandoffByID, Status string
-		Seq                                                        int
-		UpdatedAt                                                  time.Time
-		HandoffAt                                                  *time.Time
+		ID, Title, ListID, ProjectID, Handoff, HandoffByID, Status, Description string
+		Seq                                                                     int
+		UpdatedAt                                                               time.Time
+		HandoffAt                                                               *time.Time
 	}
 	var rows []row
 	err := q.Table("items").
-		Select("id, seq, title, list_id, project_id, status, updated_at, handoff, handoff_at, handoff_by_id").
+		Select("id, seq, title, list_id, project_id, status, updated_at, handoff, handoff_at, handoff_by_id, description").
 		Where("parent_id IS NULL AND archived_at IS NULL AND deleted_at IS NULL").
 		Order("updated_at DESC").Scan(&rows).Error
 	out := make([]domain.ContextTask, len(rows))
@@ -156,6 +156,9 @@ func (r *ContextRepository) tasks(q *gorm.DB, withStatus bool) ([]domain.Context
 		}
 		if withStatus {
 			out[i].Status = x.Status
+		}
+		if withKeys {
+			out[i].Keys = domain.ExternalKeys(x.Title, x.Description)
 		}
 	}
 	return out, err
@@ -234,7 +237,7 @@ func (r *ContextRepository) Ready(spaceID string, limit int) ([]domain.ContextTa
 	return r.tasks(r.db.Where("space_id = ? AND status = ?", spaceID, domain.ReportPending).
 		Where(`NOT EXISTS (SELECT 1 FROM item_blocks b JOIN items x ON x.id = b.blocked_by_id
 			WHERE b.item_id = items.id AND x.deleted_at IS NULL AND x.status IN ('pending', 'in_progress'))`).
-		Limit(limit+1), true)
+		Limit(limit+1), true, false)
 }
 
 // AssigneesOf: los usuarios (por `username`, que es como se nombran en el MCP)
