@@ -112,6 +112,9 @@ type NodeInfo struct {
 	Name       string
 	KubeletVer string
 	Ready      bool
+	// Addresses: InternalIP, ExternalIP y Hostname, tal como los da el nodo.
+	// Con ellas se sabe a qué servidor registrado corresponde este clúster.
+	Addresses []string
 }
 
 func (c *Client) Nodes(ctx context.Context) ([]NodeInfo, error) {
@@ -123,6 +126,9 @@ func (c *Client) Nodes(ctx context.Context) ([]NodeInfo, error) {
 					KubeletVersion string `json:"kubeletVersion"`
 				} `json:"nodeInfo"`
 				Conditions []condition `json:"conditions"`
+				Addresses  []struct {
+					Address string `json:"address"`
+				} `json:"addresses"`
 			} `json:"status"`
 		} `json:"items"`
 	}
@@ -131,11 +137,15 @@ func (c *Client) Nodes(ctx context.Context) ([]NodeInfo, error) {
 	}
 	out := make([]NodeInfo, 0, len(resp.Items))
 	for _, n := range resp.Items {
-		out = append(out, NodeInfo{
+		info := NodeInfo{
 			Name:       n.Metadata.Name,
 			KubeletVer: n.Status.NodeInfo.KubeletVersion,
 			Ready:      condStatus(n.Status.Conditions, "Ready") == "True",
-		})
+		}
+		for _, a := range n.Status.Addresses {
+			info.Addresses = append(info.Addresses, a.Address)
+		}
+		out = append(out, info)
 	}
 	return out, nil
 }

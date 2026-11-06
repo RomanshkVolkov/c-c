@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +31,84 @@ func NewK8sHubService(client *k8s.Client) *K8sHubService {
 }
 
 func (s *K8sHubService) Available() bool { return s.client.Enabled() }
+
+// ─── ¿Es este servidor el clúster de cac? ─────────────────────────────────────
+//
+// El hub no lee el servidor que se le pide: lee el clúster donde corre el
+// backend, con su cuenta de servicio. Mientras cac vivía en pixel-vps y era el
+// único kubernetes registrado, cuadraba; al mudarse a gstd (5-nov-2026), la
+// ficha de pixel-vps habría enseñado los nodos, rutas y certificados de gstd
+// con su nombre. Ahora un servidor sólo es «el clúster» si su host es la
+// dirección de uno de sus nodos (o resuelve a una).
+
+func (s *K8sHubService) nodes(ctx context.Context) ([]k8s.NodeInfo, error) {
+	data, err := s.cached("nodes", func() (any, error) { return s.client.Nodes(ctx) })
+	if err != nil {
+		return nil, err
+	}
+	return data.([]k8s.NodeInfo), nil
+}
+
+// Owns: si `host` (el de un servidor registrado) es este clúster.
+func (s *K8sHubService) Owns(ctx context.Context, host string) bool {
+	if !s.Available() {
+		return false
+	}
+	nodes, err := s.nodes(ctx)
+	if err != nil {
+		return false
+	}
+	var addrs []string
+	for _, n := range nodes {
+		addrs = append(addrs, n.Addresses...)
+	}
+	return hostIsOneOf(ctx, host, addrs, net.DefaultResolver.LookupHost)
+}
+
+// NodesReady: todos los nodos del clúster están Ready (y hay alguno).
+func (s *K8sHubService) NodesReady(ctx context.Context) (bool, error) {
+	nodes, err := s.nodes(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, n := range nodes {
+		if !n.Ready {
+			return false, nil
+		}
+	}
+	return len(nodes) > 0, nil
+}
+
+// hostIsOneOf: el host tal cual, o lo que resuelve, es una de las direcciones.
+// Sin mayúsculas ni espacios; un nombre que no resuelve no es ninguna.
+func hostIsOneOf(ctx context.Context, host string, addrs []string, lookup func(context.Context, string) ([]string, error)) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return false
+	}
+	want := map[string]bool{}
+	for _, a := range addrs {
+		want[strings.ToLower(strings.TrimSpace(a))] = true
+	}
+	if want[host] {
+		return true
+	}
+	if net.ParseIP(host) != nil || lookup == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	ips, err := lookup(ctx, host)
+	if err != nil {
+		return false
+	}
+	for _, ip := range ips {
+		if want[ip] {
+			return true
+		}
+	}
+	return false
+}
 
 // cached runs load() unless a fresh entry exists for key.
 func (s *K8sHubService) cached(key string, load func() (any, error)) (any, error) {

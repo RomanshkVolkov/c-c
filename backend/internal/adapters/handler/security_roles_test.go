@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -94,6 +95,35 @@ func TestThePlatformClusterIsSuperadminOnly(t *testing.T) {
 	}
 	if code := ver(superadmin()); code == http.StatusNotFound || code == http.StatusForbidden {
 		t.Errorf("un superadmin → %d, se esperaba pasar la guarda", code)
+	}
+}
+
+type fakeHub struct{ host string }
+
+func (f fakeHub) Available() bool                                   { return true }
+func (f fakeHub) Owns(_ context.Context, host string) bool          { return host == f.host }
+func (f fakeHub) Health(context.Context) (*domain.K8sHealth, error) { return &domain.K8sHealth{}, nil }
+func (f fakeHub) Routes(context.Context) (*domain.K8sRoutesResponse, error) {
+	return &domain.K8sRoutesResponse{}, nil
+}
+
+// El hub lee el clúster donde corre cac, no el servidor pedido: la ficha de
+// otro kubernetes no lo enseña con su nombre (pixel-vps con los datos de gstd,
+// 5-nov-2026). srv-k8s está en 10.0.0.3. Rotura que atrapa: quitar la guarda.
+func TestAnotherServersClusterIsNotShown(t *testing.T) {
+	db, cleanup := provisioningDB(t)
+	defer cleanup()
+	servers := service.NewServerService(repository.NewServerRepository(db))
+	ver := func(hub K8sHub) int {
+		rec := httptest.NewRecorder()
+		NewK8sHandler(servers, hub).Health(rec, serverReq(http.MethodGet, "srv-k8s", "", "", superadmin()))
+		return rec.Code
+	}
+	if code := ver(fakeHub{host: "13.140.235.112"}); code != http.StatusConflict {
+		t.Errorf("el clúster de otro servidor → %d, se esperaba 409", code)
+	}
+	if code := ver(fakeHub{host: "10.0.0.3"}); code != http.StatusOK {
+		t.Errorf("su propio clúster → %d, se esperaba 200", code)
 	}
 }
 

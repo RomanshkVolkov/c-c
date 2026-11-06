@@ -23,6 +23,7 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 	h := handler.NewServerHandler(svc)
 
 	hub := service.NewK8sHubService(k8s.New())
+	svc.WithPlatform(hub)
 	k8sH := handler.NewK8sHandler(svc, hub)
 
 	intgSvc := service.NewIntegrationService(repository.NewIntegrationRepository(db))

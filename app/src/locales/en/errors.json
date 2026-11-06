@@ -247,5 +247,6 @@
   "no-such-server": "This organization has no server by that name.",
   "bad-commit": "That isn't a commit: give a sha or owner/repo@sha.",
   "installation-taken": "That installation already belongs to another organization.",
-  "superadmin-in-person": "Only a superadmin, signed in (not with a token), can do this."
+  "superadmin-in-person": "Only a superadmin, signed in (not with a token), can do this.",
+  "not-this-cluster": "This server isn't the cluster cac runs in: its views would show another cluster."
 }

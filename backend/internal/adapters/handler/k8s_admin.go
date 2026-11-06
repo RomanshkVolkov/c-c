@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -13,12 +14,20 @@ type K8sHandler interface {
 	Health(w http.ResponseWriter, r *http.Request)
 }
 
-type k8sHandler struct {
-	servers *service.ServerService
-	hub     *service.K8sHubService
+// K8sHub: lo que el handler necesita del hub (service.K8sHubService).
+type K8sHub interface {
+	Available() bool
+	Owns(ctx context.Context, host string) bool
+	Routes(ctx context.Context) (*domain.K8sRoutesResponse, error)
+	Health(ctx context.Context) (*domain.K8sHealth, error)
 }
 
-func NewK8sHandler(servers *service.ServerService, hub *service.K8sHubService) K8sHandler {
+type k8sHandler struct {
+	servers *service.ServerService
+	hub     K8sHub
+}
+
+func NewK8sHandler(servers *service.ServerService, hub K8sHub) K8sHandler {
 	return &k8sHandler{servers: servers, hub: hub}
 }
 
@@ -50,6 +59,13 @@ func (h *k8sHandler) authorize(w http.ResponseWriter, r *http.Request) bool {
 	}
 	if !h.hub.Available() {
 		SendErrorResponse(w, http.StatusServiceUnavailable, "Cluster API unavailable", "not-in-cluster")
+		return false
+	}
+	// Lo que se lee es el clúster donde corre cac, no el servidor pedido: sólo
+	// se enseña si es él. Si no, otra ficha enseñaría este clúster con su
+	// nombre (pixel-vps con los datos de gstd, 5-nov-2026).
+	if !h.hub.Owns(r.Context(), server.Host) {
+		SendErrorResponse(w, http.StatusConflict, "This server is not the cluster cac runs in", "not-this-cluster")
 		return false
 	}
 	return true

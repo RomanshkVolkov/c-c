@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -10,11 +11,52 @@ import (
 )
 
 type ServerService struct {
-	repo *repository.ServerRepository
+	repo     *repository.ServerRepository
+	platform PlatformCluster
 }
 
 func NewServerService(repo *repository.ServerRepository) *ServerService {
 	return &ServerService{repo: repo}
+}
+
+// PlatformCluster: el clúster donde corre el backend (K8sHubService).
+type PlatformCluster interface {
+	Owns(ctx context.Context, host string) bool
+	NodesReady(ctx context.Context) (bool, error)
+}
+
+// WithPlatform: con él, un servidor kubernetes que es el clúster de cac
+// cuenta su estado por sus nodos (ver respond).
+func (s *ServerService) WithPlatform(p PlatformCluster) *ServerService {
+	s.platform = p
+	return s
+}
+
+// respond: la respuesta de un servidor, con el estado de un kubernetes sacado
+// de su clúster. Un kubernetes no tiene agente swarm-manage: si arrastra la
+// identidad de cuando era Swarm (gstd, 5-nov-2026), su latido no cuenta. Si
+// es el clúster de cac, `online` con todos los nodos Ready y `offline` si no;
+// si es otro, lo guardado (`pending`): cac no tiene cómo mirarlo.
+func (s *ServerService) respond(srv *domain.Server) *domain.ServerResponse {
+	out := toResponse(srv)
+	if srv.Type != domain.ServerTypeKubernetes {
+		return out
+	}
+	out.Status = srv.Status
+	if s.platform == nil {
+		return out
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if !s.platform.Owns(ctx, srv.Host) {
+		return out
+	}
+	if ready, err := s.platform.NodesReady(ctx); err == nil && ready {
+		out.Status = "online"
+	} else {
+		out.Status = "offline"
+	}
+	return out
 }
 
 func (s *ServerService) Create(req domain.CreateServerRequest) (*domain.ServerResponse, error) {
@@ -34,7 +76,7 @@ func (s *ServerService) Create(req domain.CreateServerRequest) (*domain.ServerRe
 		return nil, err
 	}
 
-	return toResponse(server), nil
+	return s.respond(server), nil
 }
 
 func (s *ServerService) List(orgIDs []string, superadmin bool) ([]domain.ServerResponse, error) {
@@ -50,7 +92,7 @@ func (s *ServerService) List(orgIDs []string, superadmin bool) ([]domain.ServerR
 	}
 	result := make([]domain.ServerResponse, len(servers))
 	for i, srv := range servers {
-		result[i] = *toResponse(&srv)
+		result[i] = *s.respond(&srv)
 	}
 	return result, nil
 }
@@ -129,7 +171,7 @@ func (s *ServerService) Find(id string) (*domain.ServerResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	return toResponse(srv), nil
+	return s.respond(srv), nil
 }
 
 func (s *ServerService) Update(id string, req domain.UpdateServerRequest) (*domain.ServerResponse, error) {
@@ -146,7 +188,7 @@ func (s *ServerService) Update(id string, req domain.UpdateServerRequest) (*doma
 	if err := s.repo.Update(srv); err != nil {
 		return nil, err
 	}
-	return toResponse(srv), nil
+	return s.respond(srv), nil
 }
 
 func (s *ServerService) Delete(id string) error {
