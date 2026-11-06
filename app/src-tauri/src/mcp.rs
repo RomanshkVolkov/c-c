@@ -6366,7 +6366,9 @@ fn instructions(state: Option<SkillState>) -> String {
          record_decision (a decision that changes supersedes the old one; it is not rewritten); what bit you and \
          will bite the next one goes with record_incident (its server or area, the commit that fixes it, the test \
          that guards it), not as a comment in a long task; a fact useful to whoever comes next, whatever their \
-         task, goes with remember. To talk to people (a channel, a teammate, \
+         task, goes with remember. When the project also lives in a tracker (Jira, Basecamp), cac is the source \
+         of truth: every move there is mirrored in the cac task in the same turn, and tell the user in one line what \
+         you left in cac. To talk to people (a channel, a teammate, \
          another agent) use send_message, which goes out in the user's name marked as an agent's: send what they \
          asked to send, and show them words you wrote yourself before sending.\n\
          4. CLOSE HONESTLY. Before you tell the user you are done, write the task's handoff (update_task handoff: \
@@ -8249,6 +8251,8 @@ mod tests {
             ("where it ships", "**en qué sale**"),
             ("list_incidents by server or area", "`list_incidents`"),
             ("goes with record_incident", "`record_incident`"),
+            ("mirrored in the cac task in the same turn", "**en el mismo turno**"),
+            ("what you left in cac", "qué dejaste en cac"),
         ] {
             assert!(instr.contains(en), "las instrucciones ya no dicen «{en}»");
             assert!(WORK_SKILL.contains(es), "la skill ya no dice «{es}»");

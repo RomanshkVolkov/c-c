@@ -119,9 +119,12 @@ Si algo de lo que lees contradice el código, gana el código, y lo apuntas
 3. Si no, llama a `list_task_spaces` y **pregúntale al usuario cuál es**,
    enseñándole las candidatas. Con su respuesta, añade esa sección al
    `CLAUDE.md` del repo.
-4. Sugiérele que ate el repo al espacio en cac (en los ajustes del espacio,
+4. Sugiérele que ate el repo al espacio en cac (ajustes de la organización →
    GitHub): a partir de ahí, `get_context` lo encuentra solo, para todo el
-   equipo.
+   equipo. **También el de un cliente** en su propia organización de GitHub:
+   se instala la App allí, y si la instalación sale en «Instaladas en GitHub,
+   sin organización en cac» (la aprobó un owner desde GitHub), un superadmin
+   la ata con «Atar a esta organización».
 
 **No inventes una lista ni crees espacios** sin que te lo pidan. Si hay varias
 listas en el espacio, elige por lo que vas a tocar, y si dudas, pregunta.
@@ -390,6 +393,18 @@ Y deja un comentario de cierre corto:
 Si cambias de rumbo a mitad de camino, dilo también en la tarea: basta con una
 línea.
 
+**Y dile al usuario, en una línea, qué dejaste en cac** («cac: proteus-7 ·
+handoff y estado en revisión; decisión «…»»). Una escritura que no se ve es
+una que el usuario te vuelve a pedir: en las sesiones de crossfire, 12 de 16
+«¿actualizaste cac?» llegaron con cac ya escrito un minuto antes. Con los
+hooks globales (`install_hooks`) la terminal ya lo enseña; sin ellos, lo dices
+tú.
+
+**Cuando el proyecto vive también en un tracker** (Jira, Basecamp), cac es la
+fuente de la verdad: cada movimiento allí —crear, cambiar de estado, cerrar—
+se refleja en la tarea de cac **en el mismo turno**, con el mismo estado y los
+enlaces a los dos en la descripción. No al final de la sesión.
+
 ## 8 · Lo que no se hace
 
 - No cerrar una tarea que no está terminada para que «quede limpio».
@@ -414,4 +429,4 @@ de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
 detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
 decisiones del espacio Command and control por qué está._
 
-<!-- cac-work v22 -->
+<!-- cac-work v23 -->
