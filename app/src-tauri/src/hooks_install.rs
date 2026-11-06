@@ -25,6 +25,7 @@ pub const HOOK_FILES: &[(&str, &str)] = &[
     ("cac-edit", include_str!("../../../.claude/hooks/cac-edit")),
     ("cac-wrote", include_str!("../../../.claude/hooks/cac-wrote")),
     ("cac-handoff", include_str!("../../../.claude/hooks/cac-handoff")),
+    ("cac-mirror", include_str!("../../../.claude/hooks/cac-mirror")),
 ];
 
 /// Qué se engancha a qué: (evento, matcher, script, timeout en segundos).
@@ -40,6 +41,14 @@ const ENTRIES: &[(&str, Option<&str>, &str, u32)] = &[
     // casa con ninguna herramienta.
     ("PostToolUse", Some("mcp__cac__.*"), "cac-wrote", 5),
     ("Stop", None, "cac-handoff", 20),
+    // Sólo global: el espejo con Jira no va en el repo del cliente, que lo
+    // usa gente que no usa cac (command-and-control-318).
+    (
+        "PostToolUse",
+        Some("mcp__.*Atlassian.*__(createJiraIssue|editJiraIssue|transitionJiraIssue)"),
+        "cac-mirror",
+        10,
+    ),
 ];
 
 /// La carpeta, dentro de la de Claude Code, donde van los scripts.
@@ -257,6 +266,14 @@ mod tests {
         assert!(stop[0].contains("/otra/hooks/cac/cac-handoff"), "{stop:?}");
         let post = &moved["hooks"]["PostToolUse"][0];
         assert_eq!(post["matcher"], "mcp__cac__.*");
+        // El del espejo casa con el conector de Atlassian tal como se llama.
+        let mirror = moved["hooks"]["PostToolUse"].as_array().unwrap().iter()
+            .find(|e| ours(e["hooks"][0]["command"].as_str().unwrap(), "cac-mirror")).expect("cac-mirror");
+        let m = mirror["matcher"].as_str().unwrap();
+        for tool in ["createJiraIssue", "editJiraIssue", "transitionJiraIssue", "Atlassian"] {
+            assert!(m.contains(tool), "{m}");
+        }
+        assert!(!m.contains("get"), "un hook de escritura que casa con lecturas: {m}");
     }
 
     /// Rotura que detecta: instalar sin los ficheros, sin permiso de

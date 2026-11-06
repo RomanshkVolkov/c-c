@@ -21,7 +21,7 @@ repos. En un repo que trae los suyos (éste), la copia global calla
 La versión de abajo se sube a mano al cambiar cualquier hook: es lo que hace
 que el MCP ofrezca actualizar la copia global.
 """
-# cac-hooks v1
+# cac-hooks v2
 import json
 import os
 import re
@@ -195,9 +195,10 @@ TASKS_TTL = 5 * 60
 def in_progress(cfg, repo):
     """Las tareas en curso del espacio al que está atado `repo`, cacheadas por
     repo: `ref`, título, handoff y las claves de fuera que nombran (`keys`,
-    p. ej. `PROTEUS-224`). Vacío si el repo no está atado o cac no contesta."""
+    p. ej. `PROTEUS-224`). `None` si el repo no está atado o cac no contesta
+    (una lista vacía es un espacio sin nada en curso)."""
     if not repo:
-        return []
+        return None
     safe = re.sub(r"[^A-Za-z0-9_.-]", "_", repo)
     path = os.path.join(cache_dir(), f"tasks-{safe}.json")
     try:
@@ -209,7 +210,7 @@ def in_progress(cfg, repo):
         pass
     data = api(cfg, "/api/v1/context?repo=" + repo.replace("/", "%2F") + "&only=inProgress")
     if data is None:
-        return []
+        return None
     found = data.get("inProgress") or []
     try:
         with open(path, "w", encoding="utf-8") as f:

@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""PostToolUse (Jira por el conector de Atlassian): al crear, editar o mover
+un ticket, le recuerda al agente, en ese momento, reflejarlo en su tarea de
+cac, y le dice cuál es.
+
+Cuatro de los dieciséis «usa cac» de jose en crossfire (30-oct → 5-nov) eran
+esto: Jira y Basecamp con un estado y cac con otro, o la tarea sin sus
+enlaces (command-and-control-318). La regla estaba en la memoria y en la
+skill, y aun así se olvidaba: aquí aparece cuando toca, como `cac-prompt` con
+los servidores.
+
+Sólo en un repo atado a un espacio de cac, y sólo global: el repo del
+cliente lo comparte gente que no usa cac. Va como `additionalContext`, para
+el modelo. Ante cualquier fallo, calla.
+"""
+import json
+import os
+import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from cac_hooks import cac_config, in_progress, read_input, repo_of, shadowed  # noqa: E402
+
+ATLASSIAN = re.compile(r"^mcp__.*Atlassian.*__(createJiraIssue|editJiraIssue|transitionJiraIssue)$")
+KEY = re.compile(r"\b[A-Z][A-Z0-9]{1,15}-[0-9]{1,7}\b")
+
+
+def jira_key(args, response):
+    """La clave del ticket: la que se pasó, o la que devolvió al crearlo."""
+    for v in (args.get("issueIdOrKey"), args.get("issueKey"), args.get("key")):
+        if isinstance(v, str) and KEY.fullmatch(v.strip()):
+            return v.strip()
+    m = KEY.search(json.dumps(response, ensure_ascii=False) if response is not None else "")
+    return m.group(0) if m else ""
+
+
+def message(action, key, tasks):
+    task = next((t for t in tasks if key in (t.get("keys") or [])), None)
+    verb = {"createJiraIssue": "creaste", "editJiraIssue": "editaste", "transitionJiraIssue": "moviste"}[action]
+    if task:
+        return (f"cac · espejo: {verb} {key} en Jira; su tarea en cac es {task.get('ref')} «{task.get('title', '')}». "
+                "Refleja el cambio ahí en este mismo turno (estado igual, y si cambió algo, el handoff), "
+                "con las líneas **Jira:** y **Basecamp:** en la descripción. Dile al usuario en una línea qué dejaste en cac.")
+    return (f"cac · espejo: {verb} {key} en Jira y ninguna tarea en curso de cac lo nombra. "
+            f"Búscala (search \"{key}\"): si existe, ponle el estado y la línea **Jira:**; si no, créala en la lista "
+            "del espacio con las líneas **Jira:** y **Basecamp:**, en este mismo turno.")
+
+
+def main():
+    inp = read_input()
+    m = ATLASSIAN.match(inp.get("tool_name") or "")
+    if not m or shadowed(inp):
+        return
+    args = inp.get("tool_input") or {}
+    key = jira_key(args if isinstance(args, dict) else {}, inp.get("tool_response"))
+    if not key:
+        return
+    _, repo = repo_of(inp.get("cwd") or os.getcwd())
+    cfg = cac_config()
+    if not cfg or not repo:
+        return
+    tasks = in_progress(cfg, repo)
+    if tasks is None:  # repo sin atar: no es de cac
+        return
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse",
+                                             "additionalContext": message(m.group(1), key, tasks)}},
+                     ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

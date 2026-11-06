@@ -244,6 +244,43 @@ class Hooks(unittest.TestCase):
         self.assertIn("get_task cc-7", out)
         self.assertIn("get_incident inc-1", out)
 
+    # ── cac-mirror ──
+
+    def mirror(self, tool, args, response=None):
+        payload = {"tool_name": tool, "tool_input": args, "cwd": self.repo}
+        if response is not None:
+            payload["tool_response"] = response
+        r = run_hook("cac-mirror", payload, self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def test_moving_a_jira_ticket_names_its_cac_task(self):
+        self.fresh_tasks(self.TASKS)
+        out = json.loads(self.mirror("mcp__claude_ai_Atlassian_MCP__transitionJiraIssue",
+                                     {"cloudId": "c", "issueIdOrKey": "PROTEUS-224", "transition": {"id": "31"}}))
+        ctx = out["hookSpecificOutput"]["additionalContext"]
+        self.assertEqual(out["hookSpecificOutput"]["hookEventName"], "PostToolUse")
+        self.assertIn("moviste PROTEUS-224", ctx)
+        self.assertIn("cc-7 «Agente A", ctx)
+        self.assertIn("en este mismo turno", ctx)
+        self.assertNotIn("systemMessage", out, "es para el modelo, no para la persona")
+
+    def test_a_new_ticket_without_a_task_asks_to_find_or_create_it(self):
+        self.fresh_tasks(self.TASKS)
+        answer = [{"type": "text", "text": json.dumps({"key": "PROTEUS-301", "id": "1"})}]
+        ctx = json.loads(self.mirror("mcp__claude_ai_Atlassian_MCP__createJiraIssue",
+                                     {"projectKey": "PROTEUS", "summary": "x"}, answer))["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("creaste PROTEUS-301", ctx)
+        self.assertIn('search "PROTEUS-301"', ctx)
+
+    def test_the_mirror_is_quiet_outside_cac_or_for_a_read(self):
+        self.fresh_vocabulary([])
+        ANSWERS["/api/v1/context"] = (404, None)
+        self.assertEqual(self.mirror("mcp__claude_ai_Atlassian_MCP__editJiraIssue", {"issueIdOrKey": "PROTEUS-224"}), "",
+                         "habla en un repo sin atar")
+        self.fresh_tasks(self.TASKS)
+        self.assertEqual(self.mirror("mcp__claude_ai_Atlassian_MCP__getJiraIssue", {"issueIdOrKey": "PROTEUS-224"}), "")
+
     # ── cac-handoff ──
 
     def test_stop_is_blocked_until_the_task_named_by_a_commit_has_a_newer_handoff(self):
