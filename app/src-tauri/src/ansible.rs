@@ -2143,6 +2143,7 @@ playbooks:
 
         let verify = std::fs::read_to_string(root.join("playbooks/runner-isolated-verify.yml")).unwrap();
         assert!(verify.contains("-gha-rs-kube-mode -n default"), "el verify no mira los permisos de la cuenta fuera de su namespace");
+        assert!(verify.contains("scale-set-namespace={{ ns }}"), "el verify toma por suyo el listener de otro scale set con el mismo nombre");
         for target in ["postgres-rw.data:5432", "valkey.data:6379", "cac-service.cac:80"] {
             assert!(verify.contains(target), "el verify no prueba que {target} queda fuera");
         }

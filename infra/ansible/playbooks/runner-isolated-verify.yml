@@ -10,10 +10,11 @@
   vars:
     ns: "arc-runners-{{ runner_isolated_name }}"
   tasks:
+    # Por nombre Y namespace: otro scale set (el de cac) puede llamarse igual.
     - name: El listener del scale set está arriba
       ansible.builtin.shell:
         cmd: >-
-          kubectl -n arc-systems get pods -l actions.github.com/scale-set-name={{ runner_isolated_name }}
+          kubectl -n arc-systems get pods -l actions.github.com/scale-set-name={{ runner_isolated_name }},actions.github.com/scale-set-namespace={{ ns }}
           -o jsonpath='{.items[*].status.phase}'
       register: listener
       changed_when: false
